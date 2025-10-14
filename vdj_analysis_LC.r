@@ -69,18 +69,18 @@ LC_comparison_df <- LC_master_df %>%
 
 
 #Count V:J gene pairings function
-comparison_df <- comparison_df %>%
-  mutate(LC_ID = if_else(str_detect(LC_v_call, "IGK"), "kappa", "lambda")) %>%
-  mutate(VJ_pair = paste0(LC_v_call, ":", LC_j_call)) %>%
+LC_comparison_df <- LC_comparison_df %>%
+  mutate(VJ_pair = paste0(v_call, ":", j_call)) %>%
   mutate(
-    V_gene_mut = str_extract(LC_v_call, "IGKV(\\d+)|IGLV(\\d+)") %>%
+    V_gene_mut = str_extract(v_call, "IGKV(\\d+)|IGLV(\\d+)") %>%
       str_replace("IGKV", "VK") %>%
       str_replace("IGLV", "VL"),
-    J_gene_mut = str_extract(LC_j_call, "IGKJ(\\d+)|IGLJ(\\d+)") %>%
+    J_gene_mut = str_extract(j_call, "IGKJ(\\d+)|IGLJ(\\d+)") %>%
       str_replace("IGKJ", "JK") %>%
       str_replace("IGLJ", "JL"),
-    VJ_only_gene = paste0(V_gene_mut, ":", J_gene_mut)
-  )
+    VJ_only_gene = paste0(V_gene_mut, ":", J_gene_mut)) %>%
+  relocate(V_gene_mut, J_gene_mut, VJ_only_gene, VJ_pair, .before = v_call)
+
 
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
