@@ -1,17 +1,25 @@
 ###LOAD LIBRARIES
 #%%
 #load required libraries
+###LOAD LIBRARIES
+#load required libraries
 library(readxl)
 library(dplyr)
 library(stringr)
 library(tibble)
 library(ggplot2)
+library(ggraph)
+library(circlize)
 library(tidyr)
 library(readr)
 library(vscDebugger)
+library(purrr)
+library(scales)
+library(languageserver)
+library(httpgd)
 
 #read excel file into tibble
-vdj_pairmaster_jcvi <- read_excel("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/vdj_pairmaster.xlsx")
+vdj_pairmaster_jcvi <- read_excel("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/20250930_JCVI_pairmaster_corrected.xlsx")
 
 #define BR_Code list
 BR_code <- c(
@@ -25,252 +33,361 @@ BR_code <- c(
              "UTSW018", "UTSW019", "UTSW020", "UTSW022", "UTSW023",
              "UTSW033", "227")
 
-csv_output_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/csv_outputs"
-plots_output_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/ggplot_outputs_individual"
+project <- "CYSLOOP"
 
-HC_master_df <- tibble()
-LC_master_df <- tibble()
+new_plots_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/ggplot_outputs_group/", project)
+ if (!dir.exists(new_plots_dir)) {
+   dir.create(new_plots_dir, recursive = TRUE)
+ }
+new_csv_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/csv_outputs_group/", project)
+ if (!dir.exists(new_csv_dir)) {
+   dir.create(new_csv_dir, recursive = TRUE)
+ }
+
+plots_output_dir <- new_plots_dir
+csv_output_dir <- new_csv_dir
+
+experimental_group <- c("3094", "6527", "5873")
+control_group <- c("1763", "2265", "3851")
+
+exp_group <- "cysloop"
+ctrl_group <- "control"
 
 
 ##FUNCTIONS
-#%%
-#filter for BR 1763, 2265, 3851
-cysloop <- vdj_pairmaster_jcvi %>%
-  filter(BR_code %in% c("3094", "6527", "5873"))
+#filter for experimental and control groups
+pairmaster_df <- vdj_pairmaster_jcvi %>%
+  mutate(group_ID = case_when(
+    BR_code %in% experimental_group ~ exp_group,
+    BR_code %in% control_group ~ ctrl_group,
+    TRUE ~ NA_character_
+  ), .after = 1)
 
-#function to count gene family usage
-count_gene_family <- function(df, column, patterns) {
-  sapply(patterns, function(p) sum(grepl(p, df[[column]])))
-}
+comparison_df <- pairmaster_df %>%
+  select(BR_code, group_ID, LC_sequence_id:LC_reference) %>%
+  filter(group_ID %in% c(exp_group, ctrl_group)) 
 
-#Top 10 gene distribution
-top_genes <- function(df, column_name = "LC_v_call", top_n = 10,
-                      filter_pattern = NULL) {
-  if (!is.null(filter_pattern)) {
-    df <- df %>% filter(str_detect(.data[[column_name]], filter_pattern))
-  }
-  df %>%
-    count(.data[[column_name]], sort = TRUE) %>%
-    slice_head(n = top_n)
-}
 
 #Count V:J gene pairings function
-cysloop <- cysloop %>%
+comparison_df <- comparison_df %>%
+  mutate(LC_ID = if_else(str_detect(LC_v_call, "IGK"), "kappa", "lambda")) %>%
   mutate(VJ_pair = paste0(LC_v_call, ":", LC_j_call)) %>%
   mutate(
     V_gene_mut = str_extract(LC_v_call, "IGKV(\\d+)|IGLV(\\d+)") %>%
       str_replace("IGKV", "VK") %>%
       str_replace("IGLV", "VL"),
-    J_gene_mut = str_extract(LC_j_call, "IGKJ(\\d+)|IGLJ") %>%
+    J_gene_mut = str_extract(LC_j_call, "IGKJ(\\d+)|IGLJ(\\d+)") %>%
       str_replace("IGKJ", "JK") %>%
-      str_replace("IGLJ", "LJ"),
+      str_replace("IGLJ", "JL"),
     VJ_only_gene = paste0(V_gene_mut, ":", J_gene_mut)
   )
 
-count_vj_pairs <- function(df, v_pattern, j_pattern, v_column = "LC_v_call", j_column = "LC_j_call") {
-  df %>%
-    filter(str_detect(.data[[v_column]], v_pattern) & str_detect(.data[[j_column]], j_pattern)) %>%
-    nrow()
-}
+#summary_df is a grouped df so all df made from it need to be grouped 
+#ryan said this could be condensed using case_when, can come back to this
+#add group_by BR_code - should be a simple addition 
+summary_df <- bind_rows(
+  comparison_df %>%
+    group_by(group_ID, V_gene_mut) %>%
+    summarize(
+      hit_count = n(),
+      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+    mutate(
+      percent_value = hit_count / sum(hit_count),
+      percent = percent_value * 100) %>%  
+    rename(gene = V_gene_mut) %>%
+    mutate(
+      type = "V_gene", 
+      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")),
+                          
+  comparison_df %>%
+    group_by(group_ID, J_gene_mut) %>%
+    summarize(
+      hit_count = n(),
+      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE))%>%
+    mutate(
+      percent_value = hit_count / sum(hit_count),
+      percent = percent_value * 100) %>%
+    rename(gene = J_gene_mut) %>%
+    mutate(
+      type = "J_gene", 
+      ID = if_else(str_detect(gene, "JK"), "kappa", "lambda")),
 
-percent_vj_pairs <- function(df, vj_pattern, vj_column = "VJ_only_gene") {
-  total <- nrow(df)
-  count <- df %>%
-    filter(str_detect(.data[[vj_column]], vj_pattern)) %>%
-    nrow()
-  percent <- (count / total) * 100
-  return(percent)
-}
+  comparison_df %>%
+    group_by(group_ID, VJ_only_gene) %>%
+    summarize(
+      hit_count = n(),
+      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+    mutate(
+      percent_value = hit_count / sum(hit_count),
+      percent = percent_value * 100) %>%
+    rename(gene = VJ_only_gene) %>%
+    mutate(
+      type = "VJ_pair", 
+      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
+    
 
-
-###LIGHT CHAIN ANALYSIS
-#%%
-
-IGKV_families <- paste0("IGKV", 1:7)
-IGLV_families <- paste0("IGLV", 1:7)
-
-#count V and J gene families
-IGKV_counts <- count_gene_family(cysloop_controls, "LC_v_call", IGKV_families)
-IGLV_counts <- count_gene_family(cysloop_controls, "LC_v_call", IGLV_families)
-
-#create distribution tibbles
-K_fam_distribution <- tibble(KC_v_fam = IGKV_families, count = IGKV_counts) %>%
-  mutate(distribution = 100 * count / sum(count))
-
-L_fam_distribution <- tibble(LC_v_fam = IGLV_families, count = IGLV_counts) %>%
-  mutate(distribution = 100 * count / sum(count))
-
-#light chain gene distribution
-KC_v_gene_distribution <- cysloop_controls %>%
-  filter(str_detect(LC_v_call, "IGKV"))
-
-LC_v_gene_distribution <- cysloop_controls %>%
-  filter(str_detect(LC_v_call, "IGLV"))
-
-#get top 10 K and L gene hits, remove allele name  
-top10_k_genes <- top_genes(KC_v_gene_distribution, column_name = "LC_v_call") 
-top10_k_genes <- top10_k_genes %>%
-  mutate(gene_only = str_remove(LC_v_call, "\\*.*$"))
-
-top10_l_genes <- top_genes(LC_v_gene_distribution, column_name = "LC_v_call") 
-top10_l_genes <- top10_l_genes %>%
-  mutate(gene_only = str_remove(LC_v_call, "\\*.*$"))
-
-#get top 10 V and J gene hits 
-top10_v_genes <- top_genes(cysloop_controls, column_name = "LC_v_call")
-top10_j_genes <- top_genes(cysloop_controls, column_name = "LC_j_call")
-
-#V:J pairs
-top_vj_pairings <- cysloop_controls %>%
-  count(VJ_only_gene, sort = TRUE) %>%
-  slice_max(n, n = 10)
-
-heatmap_vj_pairs <- cysloop_controls %>%
-  count(V_gene_mut, J_gene_mut)
-
-vj_pair_percentage_table <- cysloop_controls %>%
-  count(VJ_only_gene) %>%
-  mutate(percent = (n / sum(n)) * 100) %>%
-  slice_max(percent, n = 10)
-
-#this can call the specific percentage 
-percent_vj_pairs(cysloop_controls, "VH3:JH3")
-
+hgd()
+hgd_browse()
 
 ###LIGHT CHAIN PLOTS
-#%%
-# IGKV Family Distribution
-ggplot(K_fam_distribution, aes(x = KC_v_fam, y = distribution)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
-  labs(title = "IGKV Family Distribution in Cysloop",
-       x = "LC Kappa Gene Family", y = "Percentage (%)")
-ggsave(filename = file.path(plots_output_dir, "K_fam_distribution_cysloop.png"),
-       width = 6, height = 4)
 
-#IGKV top 10 genes 
-ggplot(top10_k_genes, aes(x = reorder(gene_only, -n), y = n)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
+# Variable kappa and lambda Family Distribution Plots
+LC_V_family_distribution_counts_plot <- summary_df %>%
+  dplyr::filter(type == "V_gene") %>%
+  pivot_longer(cols = c("hit_count"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "IGKV Top 10 Genes in Cysloop",
-       x = "KV Top 10 Genes", y = "Count")
-ggsave(filename = file.path(plots_output_dir, "KV_genes_top10_cysloop.png"),
-       width = 6, height = 4)
+  labs(title = "Variable Gene Family Distribution",
+       x = "Light Chain Gene Family", y = "# of Hits", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_V_family_distribution_counts_plot, width = 6, height = 4)
 
-# IGLV Family Distribution
-ggplot(L_fam_distribution, aes(x = LC_v_fam, y = distribution)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
-  labs(title = "IGLC Family Distribution in Cysloop",
-       x = "LC Lambda Gene Family", y = "Percentage (%)")
-ggsave(filename = file.path(plots_output_dir, "L_fam_distribution_cysloop.png"),
-       width = 6, height = 4)
-
-#IGLV top 10 genes 
-ggplot(top10_l_genes, aes(x = reorder(gene_only, -n), y = n)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
+LC_V_family_distribution_percent_plot <- summary_df %>%
+  dplyr::filter(type == "V_gene") %>%
+  pivot_longer(cols = c("percent"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "IGLV Top 10 Genes in Cysloop",
-       x = "LV Top 10 Genes", y = "Count")
-ggsave(filename = file.path(plots_output_dir, "LV_genes_top10_cysloop.png"),
-       width = 6, height = 4)
-
-#V:J pairs
-ggplot(top_vj_pairings, aes(x = reorder(VJ_only_gene, -n), y = n)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
+  labs(title = "Variable Gene Family Distribution",
+       x = "Light Chain Gene Family", y = "% of Hits", fill = "Group") 
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_V_family_distribution_percent_plot, width = 6, height = 4)
+    
+#CDR3 charge distribution plot for V gene families 
+LC_V_family_distribution_charge_plot <- summary_df %>%
+  dplyr::filter(type == "V_gene") %>%
+  pivot_longer(cols = c("LC_cdr3_aa_charge"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Top 10 V:J pairs in Cysloop",
-       x = "V:J pairs", y = "Count")
-ggsave(filename = file.path(plots_output_dir, "LC_V:J_pairs_top10_cysloop.png"),
-       width = 6, height = 4)
+  labs(title = "Variable Gene Family CDR3 Charges",
+       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_V_family_distribution_charge_plot, width = 6, height = 4)
 
-ggplot(heatmap_vj_pairs, aes(x = J_gene_mut, y = V_gene_mut, fill = n)) +
-  geom_tile(color = "#ffffff60") +
-  scale_fill_gradient(low = "#edcdcde4", high = "darkred") +
-  labs(title = "VH:JH Gene Pairings in Cysloop",
-       x = "JH Gene", y = "VH Gene", fill = "Count") +
-  theme_grey()
-ggsave(filename = file.path(plots_output_dir, "LC_VH:JH_pairs_cysloop.png"),
-        width = 6, height = 4)
-
-#V:J pairs percentage
-ggplot(vj_pair_percentage_table, aes(x = reorder(VJ_only_gene, -percent), y = percent)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_grey(base_size = 14) +
+# Joint kappa and lambda Family Distribution Plots
+LC_J_family_distribution_counts_plot <- summary_df %>%
+  dplyr::filter(type == "J_gene") %>%
+  pivot_longer(cols = c("hit_count"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "V:J pairs percentage in Cysloop",
+  labs(title = "Joint Gene Family Distribution",
+       x = "Light Chain Gene Family", y = "# of Hits", fill = "Group") 
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_J_family_distribution_counts_plot, width = 6, height = 4)
+
+LC_J_family_distribution_percent_plot <- summary_df %>%
+  dplyr::filter(type == "J_gene") %>%
+  pivot_longer(cols = c("percent"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Joint Gene Family Distribution",
+       x = "Light Chain Gene Family", y = "% of Hits", fill = "Group") 
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_J_family_distribution_percent_plot, width = 6, height = 4)
+
+#CDR3 charge distribution plot for J gene families
+LC_J_family_distribution_charge_plot <- summary_df %>%
+  dplyr::filter(type == "J_gene") %>%
+  pivot_longer(cols = c("LC_cdr3_aa_charge"),
+               names_to = "measure", values_to = "value") %>%
+  ggplot(aes(x = gene, y = value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
+  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Joint Gene Family CDR3 Charges",
+       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_J_family_distribution_charge_plot, width = 6, height = 4)
+
+
+#V:J Gene Pairings counts, heatmap, and percentage plots
+
+#V:J pairs top 10 counts kappa and lambda
+VJ_pairs_LC_top10_count_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair") %>%
+  pivot_longer(cols = c("hit_count"),
+               names_to = "measure", values_to = "hit_count") %>%
+    arrange(desc(hit_count)) %>%
+    slice_head(n = 10) %>%
+  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    geom_col(position = position_dodge(0.5)) +
+    facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+    theme_grey(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Top 10 V:J pairs Light Chain",
+        x = "V:J pairs", y = "Count")
+      ggsave(filename = file.path(plots_output_dir, paste0("LC_V:J_pairs_top10_count_", exp_group, "_vs_", ctrl_group, ".png")),
+        plot = VJ_pairs_LC_top10_count_plot, width = 8, height = 4)
+
+#V:J pairs percentage kappa and lambda
+VJ_pairs_LC_top10_percent_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair") %>%
+  pivot_longer(cols = c("percent"),
+               names_to = "measure", values_to = "percent") %>%
+    arrange(desc(percent)) %>%
+    slice_head(n = 10) %>%
+ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+  geom_col(position = position_dodge(0.5)) +
+  facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+  theme_gray(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Top 10 V:J pairs Light Chain",
        x = "V:J pairs", y = "Percentage")
-ggsave(filename = file.path(plots_output_dir, "LC_V:J_pairs_percentage_cysloop.png"),
-       width = 6, height = 4)
+  ggsave(filename = file.path(plots_output_dir, paste0("LC_V:J_pairs_top10_percent_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = VJ_pairs_LC_top10_percent_plot, width = 8, height = 4)
 
-#%%
+#V:J pairs top 10 counts kappa
+VJ_pairs_LC_kappa_top10_count_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
+  pivot_longer(cols = c("hit_count"),
+               names_to = "measure", values_to = "hit_count") %>%
+    arrange(desc(hit_count)) %>%
+    slice_head(n = 10) %>%
+  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    geom_col(position = position_dodge(0.5)) +
+    facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+    theme_grey(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Top 10 V:J pairs Kappa Light Chain",
+        x = "V:J pairs", y = "Count")
+      ggsave(filename = file.path(plots_output_dir, paste0("LC_kappa_V:J_pairs_top10_count_", exp_group, "_vs_", ctrl_group, ".png")),
+        plot = VJ_pairs_LC_kappa_top10_count_plot, width = 8, height = 4)
+
+#V:J pairs percentage kappa
+VJ_pairs_LC_kappa_top10_percent_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
+  pivot_longer(cols = c("percent"),
+               names_to = "measure", values_to = "percent") %>%
+    arrange(desc(percent)) %>%
+    slice_head(n = 10) %>%
+ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+  geom_col(position = position_dodge(0.5)) +
+  facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+  theme_gray(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Top 10 V:J pairs Kappa Light Chain",
+       x = "V:J pairs", y = "Percentage")
+  ggsave(filename = file.path(plots_output_dir, paste0("LC_kappa_V:J_pairs_top10_percent_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = VJ_pairs_LC_kappa_top10_percent_plot, width = 8, height = 4)
+
+#V:J pairs top 10 counts lambda
+VJ_pairs_LC_lambda_top10_count_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
+  pivot_longer(cols = c("hit_count"),
+               names_to = "measure", values_to = "hit_count") %>%
+    arrange(desc(hit_count)) %>%
+    slice_head(n = 10) %>%
+  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    geom_col(position = position_dodge(0.5)) +
+    facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+    theme_grey(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Top 10 V:J pairs Lambda Light Chain",
+        x = "V:J pairs", y = "Count")
+      ggsave(filename = file.path(plots_output_dir, paste0("LC_lambda_V:J_pairs_top10_count_", exp_group, "_vs_", ctrl_group, ".png")),
+        plot = VJ_pairs_LC_lambda_top10_count_plot, width = 8, height = 4)
+
+#V:J pairs percentage lambda
+VJ_pairs_LC_lambda_top10_percent_plot <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
+  pivot_longer(cols = c("percent"),
+               names_to = "measure", values_to = "percent") %>%
+    arrange(desc(percent)) %>%
+    slice_head(n = 10) %>%
+ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+  geom_col(position = position_dodge(0.5)) +
+  facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
+  theme_gray(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Top 10 V:J pairs Lambda Light Chain",
+       x = "V:J pairs", y = "Percentage")
+  ggsave(filename = file.path(plots_output_dir, paste0("LC_lambda_V:J_pairs_top10_percent_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = VJ_pairs_LC_lambda_top10_percent_plot, width = 8, height = 4)
+
+
+#V:J pairs chord diagram 
+VJ_pairs_LC_chord_diagram_exp <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", group_ID == exp_group) %>%
+  separate(gene, into = c("VK", "JK", sep = ":")) %>%
+  group_by(VK, JK) %>%
+  summarise(percent = sum(percent), .groups = 'drop') %>%
+  pivot_wider(names_from = "JK", values_from = percent, values_fill = 0) 
+  matrix_exp <- as.matrix(VJ_pairs_LC_chord_diagram_exp[, -1])
+  rownames(matrix_exp) <- VJ_pairs_LC_chord_diagram_exp$VK
+  circos.clear()
+  circos.par(gap.after = c(rep(5, nrow(matrix_exp)-1), 15, rep(5, ncol(matrix_exp)-1), 15))
+  png(filename = file.path(plots_output_dir, paste0("LC_VJ_pairs_chord_diagram_", exp_group, ".png")), 
+      width = 600, height = 600)
+  chordDiagram(matrix_exp, link.sort = TRUE, row.col = 1:13, transparency = 0.5)
+  title(paste0("Light Chain V:J Gene Pairings in ", exp_group))
+  dev.off()
+
+VJ_pairs_LC_chord_diagram_control <- summary_df %>%
+  dplyr::filter(type == "VJ_pair", group_ID == ctrl_group) %>%
+  separate(gene, into = c("VK", "JK", sep = ":")) %>%
+  group_by(VK, JK) %>%
+  summarise(percent = sum(percent), .groups = 'drop') %>%
+  pivot_wider(names_from = "JK", values_from = percent, values_fill = 0) 
+  matrix_control <- as.matrix(VJ_pairs_LC_chord_diagram_control[, -1])
+  rownames(matrix_control) <- VJ_pairs_LC_chord_diagram_control$VK
+  circos.clear()
+  circos.par(gap.after = c(rep(5, nrow(matrix_control)-1), 15, rep(5, ncol(matrix_control)-1), 15))
+  png(filename = file.path(plots_output_dir, paste0("LC_VJ_pairs_chord_diagram_", ctrl_group, ".png")), 
+      width = 600, height = 600)
+  chordDiagram(matrix_control, link.sort = TRUE, row.col = 1:13, transparency = 0.5)
+  title(paste0("Light Chain V:J Gene Pairings in ", ctrl_group))
+  dev.off()
+
+#CDR3 Charge Kappa vs Lambda plot - need to add counts and values - this is fucked up 
+LC_Kappa_and_Lambda_charge_plot <- summary_df %>%
+  dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+  pivot_longer(cols = c("LC_cdr3_aa_charge"),
+               names_to = "measure", values_to = "value") %>%
+  group_by(group_ID, ID, type, measure) %>%
+  summarize(mean_value = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(x = ID, y = mean_value, fill = group_ID)) +
+  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
+  geom_text(data = summary_df %>%
+              dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+              group_by(group_ID, ID, type) %>%
+              summarize(hit_count = sum(hit_count), .groups = "drop") %>%
+              mutate(measure = "LC_cdr3_aa_charge"),
+            aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  facet_grid(rows = vars(measure), cols = vars(type), scales = "free_x") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Light Chain CDR3 Charges",
+       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_Kappa_and_Lambda_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_Kappa_and_Lambda_charge_plot, width = 6, height = 4)
+
 ##CSV output
-selected_codes <- c("3094", "6527", "5873")
 
-for (code in selected_codes) {
-  csv_df <- cysloop_controls %>%
-    filter(BR_code == code)
+export_individual_df <- comparison_df %>%
+  select(BR_code, group_ID, LC_v_call, LC_j_call, V_gene_mut:VJ_only_gene, VJ_pair, LC_cdr3_aa_length, LC_cdr3_aa_charge)
 
+export_group_df <- summary_df %>%
+  select(group_ID, type, gene, ID, hit_count, percent, LC_cdr3_aa_charge)
 
-IGHV_counts <- count_gene_family(csv_df, "LC_v_call", IGHV_families)
-IGHJ_counts <- count_gene_family(csv_df, "LC_j_call", IGHJ_families)
-
-V_fam_df <- tibble(
-    BR_code = code,
-    Gene_family = IGHV_families,
-    Type = "IGV",
-    count = IGHV_counts,
-    distribution = 100 * count / sum(count)
-  )
-
-J_fam_df <- tibble(
-  BR_code = code,
-  Gene_family = IGHJ_families,
-  Type = "IGHJ",
-  count = IGHJ_counts,
-  distribution = 100 * count / sum(count)
-)
-
-write_csv(V_fam_df, file.path(csv_output_dir, paste0("IGHV_family_counts_", code, ".csv")))
-write_csv(J_fam_df, file.path(csv_output_dir, paste0("IGHJ_family_counts_", code, ".csv")))
-HC_master_df <- bind_rows(HC_master_df, V_fam_df, J_fam_df)
-}
-
-# Write master CSV
-write_csv(HC_master_df, file.path(csv_output_dir, "HC_gene_family_counts.csv"))
-
-##LIGHT CHAIN CSV
-selected_codes <- c("3094", "6527", "5873")
-for (code in selected_codes) {
-  csv_df <- cysloop_controls %>%
-    filter(BR_code == code)
-
-IGKV_counts <- count_gene_family(csv_df, "LC_v_call", IGKV_families)
-IGLV_counts <- count_gene_family(csv_df, "LC_v_call", IGLV_families)
-
-KV_fam_df <- tibble(
-    BR_code = code,
-    Gene_family = IGKV_families,
-    Type = "IGKV",
-    count = IGKV_counts,
-    distribution = 100 * count / sum(count)
-  )
-
-LV_fam_df <- tibble(
-  BR_code = code,
-  Gene_family = IGLV_families,
-  Type = "IGLV",
-  count = IGLV_counts,
-  distribution = 100 * count / sum(count)
-)
-
-write_csv(KV_fam_df, file.path(csv_output_dir, paste0("IGKV_family_counts_", code, ".csv")))
-write_csv(LV_fam_df, file.path(csv_output_dir, paste0("IGLV_family_counts_", code, ".csv")))
-LC_master_df <- bind_rows(LC_master_df, KV_fam_df, LV_fam_df)
-}
-
-# Write master CSV
-write_csv(LC_master_df, file.path(csv_output_dir, "LC_gene_family_counts.csv"))
+write_csv(export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+write_csv(export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
