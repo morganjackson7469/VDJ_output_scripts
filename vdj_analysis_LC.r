@@ -19,7 +19,8 @@ library(languageserver)
 library(httpgd)
 
 #read excel file into tibble
-vdj_pairmaster_jcvi <- read_excel("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/20250930_JCVI_pairmaster_corrected.xlsx")
+LC_master_df <- summary_tsv_all %>%
+ filter(chain == "Light")  
 
 #define BR_Code list
 BR_code <- c(
