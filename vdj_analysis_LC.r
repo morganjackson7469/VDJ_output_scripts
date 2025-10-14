@@ -57,15 +57,14 @@ ctrl_group <- "control"
 
 ##FUNCTIONS
 #filter for experimental and control groups
-pairmaster_df <- vdj_pairmaster_jcvi %>%
+LC_master_df <- LC_master_df %>%
   mutate(group_ID = case_when(
     BR_code %in% experimental_group ~ exp_group,
     BR_code %in% control_group ~ ctrl_group,
     TRUE ~ NA_character_
   ), .after = 1)
 
-comparison_df <- pairmaster_df %>%
-  select(BR_code, group_ID, LC_sequence_id:LC_reference) %>%
+LC_comparison_df <- LC_master_df %>%
   filter(group_ID %in% c(exp_group, ctrl_group)) 
 
 
