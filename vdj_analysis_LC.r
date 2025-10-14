@@ -126,13 +126,10 @@ LC_summary_df <- bind_rows(
       ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
     
 
-hgd()
-hgd_browse()
-
 ###LIGHT CHAIN PLOTS
 
 # Variable kappa and lambda Family Distribution Plots
-LC_V_family_distribution_counts_plot <- summary_df %>%
+LC_V_family_distribution_counts_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "value") %>%
@@ -146,7 +143,7 @@ LC_V_family_distribution_counts_plot <- summary_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_V_family_distribution_counts_plot, width = 6, height = 4)
 
-LC_V_family_distribution_percent_plot <- summary_df %>%
+LC_V_family_distribution_percent_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "value") %>%
@@ -161,7 +158,7 @@ LC_V_family_distribution_percent_plot <- summary_df %>%
        plot = LC_V_family_distribution_percent_plot, width = 6, height = 4)
     
 #CDR3 charge distribution plot for V gene families 
-LC_V_family_distribution_charge_plot <- summary_df %>%
+LC_V_family_distribution_charge_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
   pivot_longer(cols = c("LC_cdr3_aa_charge"),
                names_to = "measure", values_to = "value") %>%
@@ -176,7 +173,7 @@ LC_V_family_distribution_charge_plot <- summary_df %>%
        plot = LC_V_family_distribution_charge_plot, width = 6, height = 4)
 
 # Joint kappa and lambda Family Distribution Plots
-LC_J_family_distribution_counts_plot <- summary_df %>%
+LC_J_family_distribution_counts_plot <- LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "value") %>%
@@ -190,7 +187,7 @@ LC_J_family_distribution_counts_plot <- summary_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_J_family_distribution_counts_plot, width = 6, height = 4)
 
-LC_J_family_distribution_percent_plot <- summary_df %>%
+LC_J_family_distribution_percent_plot <- LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "value") %>%
@@ -205,7 +202,7 @@ LC_J_family_distribution_percent_plot <- summary_df %>%
        plot = LC_J_family_distribution_percent_plot, width = 6, height = 4)
 
 #CDR3 charge distribution plot for J gene families
-LC_J_family_distribution_charge_plot <- summary_df %>%
+LC_J_family_distribution_charge_plot <- LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
   pivot_longer(cols = c("LC_cdr3_aa_charge"),
                names_to = "measure", values_to = "value") %>%
@@ -223,7 +220,7 @@ LC_J_family_distribution_charge_plot <- summary_df %>%
 #V:J Gene Pairings counts, heatmap, and percentage plots
 
 #V:J pairs top 10 counts kappa and lambda
-VJ_pairs_LC_top10_count_plot <- summary_df %>%
+VJ_pairs_LC_top10_count_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "hit_count") %>%
@@ -240,7 +237,7 @@ VJ_pairs_LC_top10_count_plot <- summary_df %>%
         plot = VJ_pairs_LC_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage kappa and lambda
-VJ_pairs_LC_top10_percent_plot <- summary_df %>%
+VJ_pairs_LC_top10_percent_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "percent") %>%
@@ -257,7 +254,7 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        plot = VJ_pairs_LC_top10_percent_plot, width = 8, height = 4)
 
 #V:J pairs top 10 counts kappa
-VJ_pairs_LC_kappa_top10_count_plot <- summary_df %>%
+VJ_pairs_LC_kappa_top10_count_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "hit_count") %>%
@@ -274,7 +271,7 @@ VJ_pairs_LC_kappa_top10_count_plot <- summary_df %>%
         plot = VJ_pairs_LC_kappa_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage kappa
-VJ_pairs_LC_kappa_top10_percent_plot <- summary_df %>%
+VJ_pairs_LC_kappa_top10_percent_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "percent") %>%
@@ -291,7 +288,7 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        plot = VJ_pairs_LC_kappa_top10_percent_plot, width = 8, height = 4)
 
 #V:J pairs top 10 counts lambda
-VJ_pairs_LC_lambda_top10_count_plot <- summary_df %>%
+VJ_pairs_LC_lambda_top10_count_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "hit_count") %>%
@@ -308,7 +305,7 @@ VJ_pairs_LC_lambda_top10_count_plot <- summary_df %>%
         plot = VJ_pairs_LC_lambda_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage lambda
-VJ_pairs_LC_lambda_top10_percent_plot <- summary_df %>%
+VJ_pairs_LC_lambda_top10_percent_plot <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "percent") %>%
@@ -326,7 +323,7 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
 
 
 #V:J pairs chord diagram 
-VJ_pairs_LC_chord_diagram_exp <- summary_df %>%
+VJ_pairs_LC_chord_diagram_exp <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", group_ID == exp_group) %>%
   separate(gene, into = c("VK", "JK", sep = ":")) %>%
   group_by(VK, JK) %>%
@@ -342,7 +339,7 @@ VJ_pairs_LC_chord_diagram_exp <- summary_df %>%
   title(paste0("Light Chain V:J Gene Pairings in ", exp_group))
   dev.off()
 
-VJ_pairs_LC_chord_diagram_control <- summary_df %>%
+VJ_pairs_LC_chord_diagram_control <- LC_summary_df %>%
   dplyr::filter(type == "VJ_pair", group_ID == ctrl_group) %>%
   separate(gene, into = c("VK", "JK", sep = ":")) %>%
   group_by(VK, JK) %>%
@@ -359,7 +356,7 @@ VJ_pairs_LC_chord_diagram_control <- summary_df %>%
   dev.off()
 
 #CDR3 Charge Kappa vs Lambda plot - need to add counts and values - this is fucked up 
-LC_Kappa_and_Lambda_charge_plot <- summary_df %>%
+LC_Kappa_and_Lambda_charge_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene" | type == "J_gene") %>%
   pivot_longer(cols = c("LC_cdr3_aa_charge"),
                names_to = "measure", values_to = "value") %>%
@@ -383,11 +380,10 @@ LC_Kappa_and_Lambda_charge_plot <- summary_df %>%
 
 ##CSV output
 
-export_individual_df <- comparison_df %>%
-  select(BR_code, group_ID, LC_v_call, LC_j_call, V_gene_mut:VJ_only_gene, VJ_pair, LC_cdr3_aa_length, LC_cdr3_aa_charge)
+LC_export_individual_df <- LC_comparison_df %>%
 
-export_group_df <- summary_df %>%
-  select(group_ID, type, gene, ID, hit_count, percent, LC_cdr3_aa_charge)
+LC_export_group_df <- LC_summary_df %>%
 
-write_csv(export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
-write_csv(export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+
+write_csv(LC_export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+write_csv(LC_export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
