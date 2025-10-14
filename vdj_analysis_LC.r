@@ -124,7 +124,7 @@ LC_summary_df <- bind_rows(
     mutate(
       type = "VJ_pair", 
       ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
-    
+
 
 ###LIGHT CHAIN PLOTS
 
