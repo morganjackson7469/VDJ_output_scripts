@@ -85,12 +85,12 @@ LC_comparison_df <- LC_comparison_df %>%
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
 #add group_by BR_code - should be a simple addition 
-summary_df <- bind_rows(
-  comparison_df %>%
-    group_by(group_ID, V_gene_mut) %>%
+LC_summary_df <- bind_rows(
+  LC_comparison_df %>%
+    group_by(group_ID, BR_code, V_gene_mut) %>%
     summarize(
       hit_count = n(),
-      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
     mutate(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%  
@@ -99,11 +99,11 @@ summary_df <- bind_rows(
       type = "V_gene", 
       ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")),
                           
-  comparison_df %>%
-    group_by(group_ID, J_gene_mut) %>%
+  LC_comparison_df %>%
+    group_by(group_ID, BR_code, J_gene_mut) %>%
     summarize(
       hit_count = n(),
-      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE))%>%
+      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
     mutate(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%
@@ -112,11 +112,11 @@ summary_df <- bind_rows(
       type = "J_gene", 
       ID = if_else(str_detect(gene, "JK"), "kappa", "lambda")),
 
-  comparison_df %>%
-    group_by(group_ID, VJ_only_gene) %>%
+  LC_comparison_df %>%
+    group_by(group_ID, BR_code, VJ_only_gene) %>%
     summarize(
       hit_count = n(),
-      LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
     mutate(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%
