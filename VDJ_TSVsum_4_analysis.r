@@ -41,12 +41,12 @@ summary_tsv_all <- summary_tsv_all %>%
       str_detect(sequence_id, "Bld") ~ "Blood",
       TRUE ~ "NA")) %>%
     mutate(chain = case_when(
-      str_detect(v_call, "IGH") ~ "Heavy",
-      str_detect(v_call, "IGK|IGL") ~ "Light",
+      str_detect(v_call, "IGH") ~ "heavy",
+      str_detect(v_call, "IGK|IGL") ~ "light",
       TRUE ~ "NA")) %>%
     mutate(LC_isotype = case_when(
-      str_detect(v_call, "IGKV") ~ "Kappa",
-      str_detect(v_call, "IGLV") ~ "Lambda",
+      str_detect(v_call, "IGKV") ~ "kappa",
+      str_detect(v_call, "IGLV") ~ "lambda",
       TRUE ~ "NA")) %>%
     relocate(BR_code, chain, sample_type, .before = v_call) %>%
     relocate(source_file, .after = sequence_id) %>%
