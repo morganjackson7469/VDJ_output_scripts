@@ -1,8 +1,7 @@
 ###LOAD LIBRARIES
 #%%
 #load required libraries
-###LOAD LIBRARIES
-#load required libraries
+
 library(readxl)
 library(dplyr)
 library(stringr)
@@ -20,7 +19,7 @@ library(httpgd)
 
 #read excel file into tibble
 LC_master_df <- summary_tsv_all %>%
- filter(chain == "Light")  
+ filter(chain == "light")  
 
 #define BR_Code list
 BR_code <- c(
@@ -67,6 +66,10 @@ LC_master_df <- LC_master_df %>%
 LC_comparison_df <- LC_master_df %>%
   filter(group_ID %in% c(exp_group, ctrl_group)) 
 
+expected_genes_Vfam <- c(paste0("VK", 1:6), 
+                        paste0("VL", 1:9))
+expected_genes_Jfam <- c(paste0("JK", 1:5),
+                        paste0("JL", 1:3))
 
 #Count V:J gene pairings function
 LC_comparison_df <- LC_comparison_df %>%
@@ -85,20 +88,22 @@ LC_comparison_df <- LC_comparison_df %>%
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
 #add group_by BR_code - should be a simple addition 
-LC_summary_df <- bind_rows(
+LC_V_summary_df <- bind_rows(
   LC_comparison_df %>%
     group_by(group_ID, BR_code, V_gene_mut) %>%
     summarize(
       hit_count = n(),
-      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
+      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
     mutate(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%  
     rename(gene = V_gene_mut) %>%
     mutate(
       type = "V_gene", 
-      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")),
+      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
+    
                           
+ LC_J_summary_df <- bind_rows(
   LC_comparison_df %>%
     group_by(group_ID, BR_code, J_gene_mut) %>%
     summarize(
@@ -110,8 +115,9 @@ LC_summary_df <- bind_rows(
     rename(gene = J_gene_mut) %>%
     mutate(
       type = "J_gene", 
-      ID = if_else(str_detect(gene, "JK"), "kappa", "lambda")),
+      ID = if_else(str_detect(gene, "JK"), "kappa", "lambda")))
 
+  LC_VJ_summary_df <- bind_rows(  
   LC_comparison_df %>%
     group_by(group_ID, BR_code, VJ_only_gene) %>%
     summarize(
@@ -123,19 +129,73 @@ LC_summary_df <- bind_rows(
     rename(gene = VJ_only_gene) %>%
     mutate(
       type = "VJ_pair", 
-      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
+      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
+  ungroup())
+  
+  LC_summary_df <- bind_rows( 
+    LC_summary_df %>%
+    group_by(group_ID, gene) %>%
+    mutate(
+      mean_hit_count = mean(hit_count),
+      mean_percent = mean(percent),
+      mean_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
+    ungroup())
 
+
+LC_summary_df <- bind_rows(
+  LC_V_summary_df,
+  LC_J_summary_df,
+  LC_VJ_summary_df
+)
+    
+
+
+#this needs to be fixed or added to when the summary df is made somehow 
+#explicit = false will limit the fill to only implicit (newly created values) missing values
+#LC_summary_df <- LC_summary_df %>%
+    #filter(type == "V_gene") %>%
+           # tidyr::complete(gene = expected_genes_Vfam, group_ID, 
+           #   fill = list(mean_hit_count  = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0), explicit = FALSE) %>%
+   # filter(type == "J_gene") %>%
+    #    tidyr::complete(gene = expected_genes_Jfam, group_ID, 
+    #      fill = list(mean_hit_count = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0), explicit = FALSE)) 
 
 ###LIGHT CHAIN PLOTS
 
 # Variable kappa and lambda Family Distribution Plots
 LC_V_family_distribution_counts_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_hit_count, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = hit_count, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_dodge2(width = 0.8, preserve = "total")) +
+  facet_grid(cols = vars(ID), scales = "free_x") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Variable Gene Family Distribution",
+       x = "Light Chain Gene Family", y = "# of Hits", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_V_family_distribution_counts_plot, width = 6, height = 4)
+
+
+
+LC_V_family_distribution_counts_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
   pivot_longer(cols = c("hit_count"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+     names_to = "measure", values_to = "hits") %>%
+  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+  geom_col(position = position_dodge(width = 0.8))+
+  geom_point(aes(shape = group_ID), position = position_dodge(width = 0.8)) +
+  facet_grid(rows = vars(hit_count), cols = vars(ID), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Variable Gene Family Distribution",
@@ -387,3 +447,6 @@ LC_export_group_df <- LC_summary_df %>%
 
 write_csv(LC_export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
 write_csv(LC_export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+
+write_csv(LC_summary_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_summarydata_", exp_group, "_vs_", ctrl_group, ".csv")))
+write_csv(LC_mean_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_meandata_", exp_group, "_vs_", ctrl_group, ".csv")))
