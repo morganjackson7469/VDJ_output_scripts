@@ -87,9 +87,11 @@ LC_comparison_df <- LC_comparison_df %>%
 
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
-#add group_by BR_code - should be a simple addition 
-LC_V_summary_df <- bind_rows(
-  LC_comparison_df %>%
+#updated to fill in zeros in missing values of family genes
+#everything worked except the hit_count and percent columns are invalid number
+#instead of NA - will need to fix, unless it doesnt effect the plots
+#after trying to do the mean of the means of the isotypes based on group_ID the numbers dont match up - need to figure this out 
+LC_V_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, V_gene_mut) %>%
     summarize(
       hit_count = n(),
@@ -98,13 +100,27 @@ LC_V_summary_df <- bind_rows(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%  
     rename(gene = V_gene_mut) %>%
+    mutate(type = "V_gene") %>%
+    ungroup() %>%
+    group_by(group_ID, gene) %>%
     mutate(
-      type = "V_gene", 
-      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")))
-    
-                          
- LC_J_summary_df <- bind_rows(
-  LC_comparison_df %>%
+      mean_gene_hit_count = mean(hit_count, na.rm = TRUE),
+      mean_gene_percent = mean(percent, na.rm = TRUE),
+      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+    ungroup() %>%
+    tidyr::complete(gene = expected_genes_Vfam, group_ID, 
+      fill = list(mean_hit_count  = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0, type = "V_gene", 
+      hit_count = NA_integer_, LC_cdr3_aa_charge = NA_real_, percent_value = NA_real_, percent = NA_real_), explicit = FALSE) %>%
+    mutate(
+      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
+    group_by(group_ID, isotype) %>%
+    mutate(
+      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
+      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
+      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
+    ungroup()
+
+LC_J_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, J_gene_mut) %>%
     summarize(
       hit_count = n(),
@@ -113,12 +129,27 @@ LC_V_summary_df <- bind_rows(
       percent_value = hit_count / sum(hit_count),
       percent = percent_value * 100) %>%
     rename(gene = J_gene_mut) %>%
+    mutate(type = "J_gene") %>%
+    ungroup() %>%
+    group_by(group_ID, gene) %>%
     mutate(
-      type = "J_gene", 
-      ID = if_else(str_detect(gene, "JK"), "kappa", "lambda")))
+      mean_gene_hit_count = mean(hit_count),
+      mean_gene_percent = mean(percent),
+      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
+    ungroup() %>%
+    tidyr::complete(gene = expected_genes_Jfam, group_ID, 
+      fill = list(mean_hit_count  = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0, type = "J_gene", 
+      hit_count = NA_integer_, LC_cdr3_aa_charge = NA_real_, percent_value = NA_real_, percent = NA_real_), explicit = FALSE) %>%
+    mutate(
+      isotype = if_else(str_detect(gene, "JK"), "kappa", "lambda")) %>%
+    group_by(group_ID, isotype) %>%
+    mutate(
+      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
+      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
+      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
+    ungroup()
 
-  LC_VJ_summary_df <- bind_rows(  
-  LC_comparison_df %>%
+LC_VJ_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, VJ_only_gene) %>%
     summarize(
       hit_count = n(),
@@ -129,18 +160,19 @@ LC_V_summary_df <- bind_rows(
     rename(gene = VJ_only_gene) %>%
     mutate(
       type = "VJ_pair", 
-      ID = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
-  ungroup())
-  
-  LC_summary_df <- bind_rows( 
-    LC_summary_df %>%
+      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
+    ungroup() %>%
     group_by(group_ID, gene) %>%
     mutate(
-      mean_hit_count = mean(hit_count),
-      mean_percent = mean(percent),
-      mean_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
-    ungroup())
-
+      mean_gene_hit_count = mean(hit_count),
+      mean_gene_percent = mean(percent),
+      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
+    group_by(group_ID, isotype) %>%
+    mutate(
+      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
+      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
+      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
+    ungroup()
 
 LC_summary_df <- bind_rows(
   LC_V_summary_df,
@@ -148,21 +180,10 @@ LC_summary_df <- bind_rows(
   LC_VJ_summary_df
 )
     
-
-
-#this needs to be fixed or added to when the summary df is made somehow 
-#explicit = false will limit the fill to only implicit (newly created values) missing values
-#LC_summary_df <- LC_summary_df %>%
-    #filter(type == "V_gene") %>%
-           # tidyr::complete(gene = expected_genes_Vfam, group_ID, 
-           #   fill = list(mean_hit_count  = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0), explicit = FALSE) %>%
-   # filter(type == "J_gene") %>%
-    #    tidyr::complete(gene = expected_genes_Jfam, group_ID, 
-    #      fill = list(mean_hit_count = 0, mean_percent = 0, mean_LC_cdr3_aa_charge = 0), explicit = FALSE)) 
-
 ###LIGHT CHAIN PLOTS
 
 # Variable kappa and lambda Family Distribution Plots
+#still need to fix jitter issue here - then apply changes to other plots 
 LC_V_family_distribution_counts_plot <- LC_summary_df %>%
   ggplot() +
   geom_col(
@@ -170,32 +191,15 @@ LC_V_family_distribution_counts_plot <- LC_summary_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_hit_count, fill = group_ID), 
+    mapping = aes(x = gene, y = mean_gene_hit_count, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = hit_count, shape = group_ID, group = group_ID), 
-    size = 1.3, position = position_dodge2(width = 0.8, preserve = "total")) +
-  facet_grid(cols = vars(ID), scales = "free_x") +
-  theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Variable Gene Family Distribution",
-       x = "Light Chain Gene Family", y = "# of Hits", fill = "Group")
-    ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
-       plot = LC_V_family_distribution_counts_plot, width = 6, height = 4)
-
-
-
-LC_V_family_distribution_counts_plot <- LC_summary_df %>%
-  dplyr::filter(type == "V_gene") %>%
-  pivot_longer(cols = c("hit_count"),
-     names_to = "measure", values_to = "hits") %>%
-  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
-  geom_col(position = position_dodge(width = 0.8))+
-  geom_point(aes(shape = group_ID), position = position_dodge(width = 0.8)) +
-  facet_grid(rows = vars(hit_count), cols = vars(ID), scales = "free_x") +
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Variable Gene Family Distribution",
@@ -204,12 +208,21 @@ LC_V_family_distribution_counts_plot <- LC_summary_df %>%
        plot = LC_V_family_distribution_counts_plot, width = 6, height = 4)
 
 LC_V_family_distribution_percent_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_gene_percent, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
-  pivot_longer(cols = c("percent"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = percent, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Variable Gene Family Distribution",
@@ -217,29 +230,49 @@ LC_V_family_distribution_percent_plot <- LC_summary_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_V_family_distribution_percent_plot, width = 6, height = 4)
     
+    
 #CDR3 charge distribution plot for V gene families 
 LC_V_family_distribution_charge_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_gene_LC_cdr3_aa_charge, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
   dplyr::filter(type == "V_gene") %>%
-  pivot_longer(cols = c("LC_cdr3_aa_charge"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Variable Gene Family CDR3 Charges",
-       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+       x = "Light Chain Gene Family", y = "Avg CDR3 Charge", fill = "Group")
     ggsave(filename = file.path(plots_output_dir, paste0("LC_V_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_V_family_distribution_charge_plot, width = 6, height = 4)
 
+
 # Joint kappa and lambda Family Distribution Plots
 LC_J_family_distribution_counts_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_gene_hit_count, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
-  pivot_longer(cols = c("hit_count"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = hit_count, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Joint Gene Family Distribution",
@@ -248,12 +281,21 @@ LC_J_family_distribution_counts_plot <- LC_summary_df %>%
        plot = LC_J_family_distribution_counts_plot, width = 6, height = 4)
 
 LC_J_family_distribution_percent_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_gene_percent, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
-  pivot_longer(cols = c("percent"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = percent, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Joint Gene Family Distribution",
@@ -261,18 +303,29 @@ LC_J_family_distribution_percent_plot <- LC_summary_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_J_family_distribution_percent_plot, width = 6, height = 4)
 
+
+
 #CDR3 charge distribution plot for J gene families
 LC_J_family_distribution_charge_plot <- LC_summary_df %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = mean_gene_LC_cdr3_aa_charge, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = LC_summary_df %>%
   dplyr::filter(type == "J_gene") %>%
-  pivot_longer(cols = c("LC_cdr3_aa_charge"),
-               names_to = "measure", values_to = "value") %>%
-  ggplot(aes(x = gene, y = value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
-  facet_grid(rows = vars(measure), cols = vars(ID), scales = "free_x") +
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Joint Gene Family CDR3 Charges",
-       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+       x = "Light Chain Gene Family", y = "Avg CDR3 Charge", fill = "Group")
     ggsave(filename = file.path(plots_output_dir, paste0("LC_J_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = LC_J_family_distribution_charge_plot, width = 6, height = 4)
 
@@ -315,7 +368,7 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
 
 #V:J pairs top 10 counts kappa
 VJ_pairs_LC_kappa_top10_count_plot <- LC_summary_df %>%
-  dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
+  dplyr::filter(type == "VJ_pair", isotype == "kappa") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "hit_count") %>%
     arrange(desc(hit_count)) %>%
@@ -332,7 +385,7 @@ VJ_pairs_LC_kappa_top10_count_plot <- LC_summary_df %>%
 
 #V:J pairs percentage kappa
 VJ_pairs_LC_kappa_top10_percent_plot <- LC_summary_df %>%
-  dplyr::filter(type == "VJ_pair", ID == "kappa") %>%
+  dplyr::filter(type == "VJ_pair", isotype == "kappa") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "percent") %>%
     arrange(desc(percent)) %>%
@@ -349,7 +402,7 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
 
 #V:J pairs top 10 counts lambda
 VJ_pairs_LC_lambda_top10_count_plot <- LC_summary_df %>%
-  dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
+  dplyr::filter(type == "VJ_pair", isotype == "lambda") %>%
   pivot_longer(cols = c("hit_count"),
                names_to = "measure", values_to = "hit_count") %>%
     arrange(desc(hit_count)) %>%
@@ -366,7 +419,7 @@ VJ_pairs_LC_lambda_top10_count_plot <- LC_summary_df %>%
 
 #V:J pairs percentage lambda
 VJ_pairs_LC_lambda_top10_percent_plot <- LC_summary_df %>%
-  dplyr::filter(type == "VJ_pair", ID == "lambda") %>%
+  dplyr::filter(type == "VJ_pair", isotype == "lambda") %>%
   pivot_longer(cols = c("percent"),
                names_to = "measure", values_to = "percent") %>%
     arrange(desc(percent)) %>%
@@ -418,19 +471,29 @@ VJ_pairs_LC_chord_diagram_control <- LC_summary_df %>%
 #CDR3 Charge Kappa vs Lambda plot - need to add counts and values - this is fucked up 
 LC_Kappa_and_Lambda_charge_plot <- LC_summary_df %>%
   dplyr::filter(type == "V_gene" | type == "J_gene") %>%
-  pivot_longer(cols = c("LC_cdr3_aa_charge"),
-               names_to = "measure", values_to = "value") %>%
-  group_by(group_ID, ID, type, measure) %>%
-  summarize(mean_value = mean(value, na.rm = TRUE)) %>%
-  ggplot(aes(x = ID, y = mean_value, fill = group_ID)) +
-  geom_col(width = 0.7, position = position_dodge2(0.8, preserve = "single")) +
-  geom_text(data = summary_df %>%
+  #group_by(group_ID, isotype, type) %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+    group_by(group_ID, isotype, type) %>%
+    distinct(mean_isotype_LC_cdr3_aa_charge),
+    mapping = aes(x = isotype, y = mean_isotype_LC_cdr3_aa_charge, fill = group_ID), 
+    position = "dodge") +
+  geom_point(
+    data = LC_summary_df %>%
               dplyr::filter(type == "V_gene" | type == "J_gene") %>%
-              group_by(group_ID, ID, type) %>%
-              summarize(hit_count = sum(hit_count), .groups = "drop") %>%
-              mutate(measure = "LC_cdr3_aa_charge"),
-            aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
-  facet_grid(rows = vars(measure), cols = vars(type), scales = "free_x") +
+    group_by(group_ID, isotype, type) %>%
+    distinct(mean_gene_LC_cdr3_aa_charge),
+    mapping = aes(x = isotype, y = mean_gene_LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  #geom_text(data = summary_df %>%
+              #dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+              #group_by(group_ID, ID, type) %>%
+              #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
+              #mutate(measure = "LC_cdr3_aa_charge"),
+            #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  facet_grid(cols = vars(type), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Light Chain CDR3 Charges",
