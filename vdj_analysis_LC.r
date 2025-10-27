@@ -179,10 +179,10 @@ LC_summary_df <- bind_rows(
   LC_J_summary_df,
   LC_VJ_summary_df
 )
-    
+
 ###LIGHT CHAIN PLOTS
 
-# Variable kappa and lambda Family Distribution Plots
+# Variable kappa and lambda Family Distribution Plots 
 #still need to fix jitter issue here - then apply changes to other plots 
 LC_V_family_distribution_counts_plot <- LC_summary_df %>%
   ggplot() +
@@ -317,7 +317,7 @@ LC_J_family_distribution_charge_plot <- LC_summary_df %>%
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
-  dplyr::filter(type == "J_gene") %>%
+    dplyr::filter(type == "J_gene") %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
@@ -433,6 +433,39 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        x = "V:J pairs", y = "Percentage")
   ggsave(filename = file.path(plots_output_dir, paste0("LC_lambda_V:J_pairs_top10_percent_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = VJ_pairs_LC_lambda_top10_percent_plot, width = 8, height = 4)
+
+#CDR3 Charge Kappa vs Lambda plot - need to add counts and values - this is fucked up 
+LC_Kappa_and_Lambda_charge_plot <- LC_summary_df %>%
+  dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+  #group_by(group_ID, isotype, type) %>%
+  ggplot() +
+  geom_col(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+    group_by(group_ID, isotype, type) %>%
+    distinct(mean_isotype_LC_cdr3_aa_charge),
+    mapping = aes(x = isotype, y = mean_isotype_LC_cdr3_aa_charge, fill = group_ID), 
+    position = "dodge") +
+  geom_point(
+    data = LC_summary_df %>%
+    dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+    group_by(group_ID, isotype, type) %>%
+    distinct(mean_gene_LC_cdr3_aa_charge),
+    mapping = aes(x = isotype, y = mean_gene_LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  #geom_text(data = summary_df %>%
+              #dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+              #group_by(group_ID, ID, type) %>%
+              #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
+              #mutate(measure = "LC_cdr3_aa_charge"),
+            #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  facet_grid(cols = vars(type), scales = "free_x") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Light Chain CDR3 Charges",
+       x = "Light Chain Gene Family", y = "Avg CDR3 charge", fill = "Group")
+    ggsave(filename = file.path(plots_output_dir, paste0("LC_Kappa_and_Lambda_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = LC_Kappa_and_Lambda_charge_plot, width = 6, height = 4)
 
 
 #V:J pairs chord diagram 
