@@ -12,7 +12,7 @@ BR_code <- c(
              "2227", "2265", "HD279", "UTSW0001", "UTSW0002", "UTSW0003",
              "UTSW0009", "UTSW0013", "UTSW0014", "UTSW0015", "UTSW0017",
              "UTSW0018", "UTSW0019", "UTSW0020", "UTSW0022", "UTSW0023",
-             "UTSW0033")
+             "UTSW0033", "6082")
 
 tsv_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/summary_files/"
 output_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/"
