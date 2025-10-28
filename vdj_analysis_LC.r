@@ -107,7 +107,7 @@ LC_V_summary_df <- LC_comparison_df %>%
         explicit = FALSE) %>%   
     mutate(type = "V_gene") %>%
     mutate(
-      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
+     isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%  
     ungroup() %>%
     group_by(group_ID, BR_code, isotype) %>%
     mutate(
@@ -119,7 +119,7 @@ LC_J_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, J_gene_mut) %>%
     summarize(
       hit_count = n(),
-      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
+      LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>% 
     rename(gene = J_gene_mut) %>% 
     tidyr::complete(gene = expected_genes_JKfam,
       fill = list(
