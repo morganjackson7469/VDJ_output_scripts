@@ -66,12 +66,13 @@ LC_master_df <- LC_master_df %>%
 LC_comparison_df <- LC_master_df %>%
   filter(group_ID %in% c(exp_group, ctrl_group)) 
 
-expected_genes_Vfam <- c(paste0("VK", 1:6), 
-                        paste0("VL", 1:9))
-expected_genes_Jfam <- c(paste0("JK", 1:5),
-                        paste0("JL", 1:3))
-expected_genes_VJpairs <- c(
-  with(expand.grid(V = paste0("VK", 1:6), J = paste0("JK", 1:5)), paste(V, J, sep = ":")),
+expected_genes_VKfam <- c(paste0("VK", 1:6))
+expected_genes_VLfam <- c(paste0("VL", 1:9))
+expected_genes_JKfam <- c(paste0("JK", 1:5))
+expected_genes_JLfam <- c(paste0("JL", 1:3))
+expected_genes_VJKpairs <- c(
+  with(expand.grid(V = paste0("VK", 1:6), J = paste0("JK", 1:5)), paste(V, J, sep = ":")))
+expected_genes_VJLpairs <- c(  
   with(expand.grid(V = paste0("VL", 1:9), J = paste0("JL", 1:3)), paste(V, J, sep = ":")))
 
 #Count V:J gene pairings function
@@ -90,55 +91,77 @@ LC_comparison_df <- LC_comparison_df %>%
 
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
-#updated to fill in zeros in missing values of family genes
-#everything worked except the hit_count and percent columns are invalid number
-#instead of NA - will need to fix, unless it doesnt effect the plots
-#after trying to do the mean of the means of the isotypes based on group_ID the numbers dont match up - need to figure this out 
-
-
-#NEED TO ADD IN EXPECTED VALUES = 0 HERE BY BR CODE
 LC_V_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, V_gene_mut) %>%
     summarize(
       hit_count = n(),
       LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
-    mutate(
-      percent_value = hit_count / sum(hit_count),
-      percent = percent_value * 100) %>%  
     rename(gene = V_gene_mut) %>% 
+    tidyr::complete(gene = expected_genes_VKfam,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>% 
+    tidyr::complete(gene = expected_genes_VLfam,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>%   
     mutate(type = "V_gene") %>%
     mutate(
       isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
-    ungroup()
+    ungroup() %>%
+    group_by(group_ID, BR_code, isotype) %>%
+    mutate(
+      total_hits = sum(hit_count),
+      percent = if_else(total_hits == 0, 0, ((hit_count / total_hits) * 100))) %>%
+    select(-total_hits)
 
 LC_J_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, J_gene_mut) %>%
     summarize(
       hit_count = n(),
       LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
-    mutate(
-      percent_value = hit_count / sum(hit_count),
-      percent = percent_value * 100) %>%  
     rename(gene = J_gene_mut) %>% 
+    tidyr::complete(gene = expected_genes_JKfam,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>% 
+    tidyr::complete(gene = expected_genes_JLfam,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>%  
     mutate(type = "J_gene") %>%
     mutate(
-      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
-    ungroup()
+      isotype = if_else(str_detect(gene, "JK"), "kappa", "lambda")) %>%
+    ungroup() %>%
+    group_by(group_ID, BR_code, isotype) %>%
+    mutate(
+      total_hits = sum(hit_count),
+      percent = if_else(total_hits == 0, 0, ((hit_count / total_hits) * 100))) %>%
+    select(-total_hits)
 
 LC_VJ_summary_df <- LC_comparison_df %>%
     group_by(group_ID, BR_code, VJ_only_gene) %>%
     summarize(
       hit_count = n(),
       LC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
-    mutate(
-      percent_value = hit_count / sum(hit_count),
-      percent = percent_value * 100) %>%
     rename(gene = VJ_only_gene) %>%
+    tidyr::complete(gene = expected_genes_VJKpairs,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>% 
+    tidyr::complete(gene = expected_genes_VJLpairs,
+      fill = list(
+        hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
+        explicit = FALSE) %>%  
     mutate(
       type = "VJ_pair", 
       isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%
-    ungroup()
-
+    ungroup() %>%
+    group_by(group_ID, BR_code, isotype) %>%
+    mutate(
+      total_hits = sum(hit_count),
+      percent = if_else(total_hits == 0, 0, ((hit_count / total_hits) * 100))) %>%
+    select(-total_hits)
 
 LC_summary_df <- bind_rows(
   LC_V_summary_df,
@@ -146,84 +169,18 @@ LC_summary_df <- bind_rows(
   LC_VJ_summary_df
 )
 
-
-LC_V_gene_means_df <- LC_summary_df %>%
-    group_by(group_ID, gene) %>%
-    mutate(
-      mean_gene_hit_count = mean(hit_count, na.rm = TRUE),
-      mean_gene_percent = mean(percent, na.rm = TRUE),
-      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge, na.rm = TRUE)) %>%
+LC_gene_means_df <- LC_summary_df %>%
+    group_by(group_ID, gene, type, isotype) %>%
+    summarize(
+      hit_count_gene = sum(hit_count),
+      LC_cdr3_aa_charge_gene = mean(LC_cdr3_aa_charge)) %>%
     ungroup() %>%
-    tidyr::complete(gene = expected_genes_Vfam, group_ID, 
-      fill = list(
-        mean_gene_hit_count  = NA_real_, mean_gene_percent = NA_real_, mean_gene_LC_cdr3_aa_charge = NA_real_, 
-        type = "V_gene", 
-        hit_count = NA_integer_, LC_cdr3_aa_charge = NA_real_, percent_value = NA_real_, percent = NA), 
-        explicit = FALSE) %>%
+    group_by(group_ID, type, isotype) %>%
     mutate(
-      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) 
-
-LC_J_gene_means_df <- LC_summary_df %>%
-    group_by(group_ID, gene) %>%
-    mutate(
-      mean_gene_hit_count = mean(hit_count),
-      mean_gene_percent = mean(percent),
-      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
-    ungroup() %>%
-    tidyr::complete(gene = expected_genes_Jfam, group_ID, 
-      fill = list(mean_hit_count  = NA_real_, mean_percent = NA_real_, mean_LC_cdr3_aa_charge = NA_real_, 
-      type = "J_gene", 
-      hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), explicit = FALSE) %>%
-    mutate(
-      isotype = if_else(str_detect(gene, "JK"), "kappa", "lambda")) 
-
-LC_VJ_gene_means_df <- LC_summary_df %>%
-    group_by(group_ID, gene) %>%
-    mutate(
-      mean_gene_hit_count = mean(hit_count),
-      mean_gene_percent = mean(percent),
-      mean_gene_LC_cdr3_aa_charge = mean(LC_cdr3_aa_charge)) %>%
-    ungroup() %>%
-    tidyr::complete(gene = expected_genes_VJpairs, group_ID, 
-                    fill = list(mean_hit_count  = NA_real_, mean_percent = NA_real_, mean_LC_cdr3_aa_charge = NA_real_, type = "VJ_pair", 
-                    hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
-                    explicit = FALSE) 
-    
-LC_gene_means_df <- bind_rows(
-  LC_V_gene_means_df, 
-  LC_J_gene_means_df, 
-  LC_VJ_gene_means_df
-)
-
-LC_V_isotype_means_df <- LC_summary_df %>%
-group_by(group_ID, isotype) %>%
-    mutate(
-      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
-      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
-      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
-    ungroup()
-
-LC_J_isotype_means_df <- LC_summary_df %>%
-    group_by(group_ID, isotype) %>%
-    mutate(
-      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
-      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
-      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
-    ungroup()
-
-LC_VJ_isotype_means_df <- LC_summary_df %>%
-group_by(group_ID, isotype) %>%
-    mutate(
-      mean_isotype_hit_count = mean(unique(mean_gene_hit_count), na.rm = TRUE),
-      mean_isotype_percent = mean(unique(mean_gene_percent), na.rm = TRUE),
-      mean_isotype_LC_cdr3_aa_charge = mean(unique(mean_gene_LC_cdr3_aa_charge), na.rm = TRUE)) %>%
-    ungroup()
-
-LC_isotype_means_df <- bind_rows(
-  LC_V_isotype_means_df,
-  LC_J_isotype_means_df,
-  LC_VJ_isotype_means_df
-)
+      total_hits_isotype = sum(hit_count_gene),
+      percent_gene = if_else(total_hits_isotype == 0, 0, ((hit_count_gene / total_hits_isotype) * 100)),
+      LC_cdr3_aa_charge_isotype = mean(LC_cdr3_aa_charge_gene)) 
+   
 
 
 ###LIGHT CHAIN PLOTS
