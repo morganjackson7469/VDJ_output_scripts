@@ -191,11 +191,11 @@ LC_V_family_distribution_counts_plot <- LC_summary_df %>%
   filter(type == "V_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_hit_count, fill = group_ID), 
+    mapping = aes(x = gene, y = hit_count_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -215,11 +215,11 @@ LC_V_family_distribution_percent_plot <- LC_summary_df %>%
   filter(type == "V_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_percent, fill = group_ID), 
+    mapping = aes(x = gene, y = percent_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -241,11 +241,11 @@ LC_V_family_distribution_charge_plot <- LC_summary_df %>%
   filter(type == "V_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_LC_cdr3_aa_charge, fill = group_ID), 
+    mapping = aes(x = gene, y = LC_cdr3_aa_charge_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -267,11 +267,11 @@ LC_J_family_distribution_counts_plot <- LC_summary_df %>%
   filter(type == "J_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "J_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_hit_count, fill = group_ID), 
+    mapping = aes(x = gene, y = hit_count_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -291,11 +291,11 @@ LC_J_family_distribution_percent_plot <- LC_summary_df %>%
   filter(type == "J_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "J_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_percent, fill = group_ID), 
+    mapping = aes(x = gene, y = percent_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -318,11 +318,11 @@ LC_J_family_distribution_charge_plot <- LC_summary_df %>%
   filter(type == "J_gene") %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "J_gene") %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = mean_gene_LC_cdr3_aa_charge, fill = group_ID), 
+    mapping = aes(x = gene, y = LC_cdr3_aa_charge_gene, fill = group_ID), 
     position = position_dodge2(width = 0.8, preserve = "total")) +
   geom_point(
     data = LC_summary_df %>%
@@ -444,23 +444,23 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        plot = VJ_pairs_LC_lambda_top10_percent_plot, width = 8, height = 4)
 
 #CDR3 Charge Kappa vs Lambda plot - need to add counts and values - this is fucked up 
-LC_Kappa_and_Lambda_charge_plot <- LC_summary_df %>%
+LC_Kappa_and_Lambda_charge_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "V_gene" | type == "J_gene") %>%
   #group_by(group_ID, isotype, type) %>%
   ggplot() +
   geom_col(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "V_gene" | type == "J_gene") %>%
     group_by(group_ID, isotype, type) %>%
-    distinct(mean_isotype_LC_cdr3_aa_charge),
-    mapping = aes(x = isotype, y = mean_isotype_LC_cdr3_aa_charge, fill = group_ID), 
+    distinct(LC_cdr3_aa_charge_isotype),
+    mapping = aes(x = isotype, y = LC_cdr3_aa_charge_isotype, fill = group_ID), 
     position = "dodge") +
   geom_point(
-    data = LC_summary_df %>%
+    data = LC_gene_means_df %>%
     dplyr::filter(type == "V_gene" | type == "J_gene") %>%
     group_by(group_ID, isotype, type) %>%
-    distinct(mean_gene_LC_cdr3_aa_charge),
-    mapping = aes(x = isotype, y = mean_gene_LC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    distinct(LC_cdr3_aa_charge_gene),
+    mapping = aes(x = isotype, y = LC_cdr3_aa_charge_gene, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
   #geom_text(data = summary_df %>%
               #dplyr::filter(type == "V_gene" | type == "J_gene") %>%
@@ -491,11 +491,11 @@ grid.col = c(
   JL1 = "#997240ff", JL2 = "#cc6f55ff", JL3 = "#f55e8eff")
 
 #V:J pairs chord diagram 
-VJ_pairs_LC_chord_diagram_exp <- LC_summary_df %>%
+VJ_pairs_LC_chord_diagram_exp <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", group_ID == exp_group) %>%
   separate(gene, into = c("VK", "JK", sep = ":")) %>%
   group_by(VK, JK) %>%
-  summarise(percent = sum(percent), .groups = 'drop') %>%
+  summarise(percent = percent_gene, .groups = 'drop') %>%
   pivot_wider(names_from = "JK", values_from = percent, values_fill = 0) 
   matrix_exp <- as.matrix(VJ_pairs_LC_chord_diagram_exp[, -1])
   rownames(matrix_exp) <- VJ_pairs_LC_chord_diagram_exp$VK
@@ -507,7 +507,7 @@ VJ_pairs_LC_chord_diagram_exp <- LC_summary_df %>%
   chordDiagram(
     matrix_exp, link.sort = TRUE, row.col = row.col,
     grid.col = grid.col, reduce = 0, transparency = 0.2,
-    annotationTrack = "grid", preAllocateTracks = list(track.height = 0.1))
+    annotationTrack = "grid", link.visible = TRUE, link.lty = 0, preAllocateTracks = list(track.height = 0.1))
   circos.trackPlotRegion(
     track.index = 1, panel.fun = function(x, y) {
       sector.name <- get.cell.meta.data("sector.index")
@@ -524,11 +524,11 @@ VJ_pairs_LC_chord_diagram_exp <- LC_summary_df %>%
   title(paste0("Light Chain V:J Gene Pairings in ", exp_group), cex.main = 2)
   dev.off()
 
-VJ_pairs_LC_chord_diagram_control <- LC_summary_df %>%
+VJ_pairs_LC_chord_diagram_control <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", group_ID == ctrl_group) %>%
   separate(gene, into = c("VK", "JK", sep = ":")) %>%
   group_by(VK, JK) %>%
-  summarise(percent = sum(percent), .groups = 'drop') %>%
+  summarise(percent = percent_gene, .groups = 'drop') %>%
   pivot_wider(names_from = "JK", values_from = percent, values_fill = 0) 
   matrix_exp <- as.matrix(VJ_pairs_LC_chord_diagram_control[, -1])
   rownames(matrix_exp) <- VJ_pairs_LC_chord_diagram_control$VK
@@ -564,8 +564,8 @@ LC_export_individual_df <- LC_comparison_df %>%
 LC_export_group_df <- LC_summary_df %>%
 
 
-write_csv(LC_export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
-write_csv(LC_export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+#write_csv(LC_export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
+#write_csv(LC_export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
 
 write_csv(LC_summary_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_summarydata_", exp_group, "_vs_", ctrl_group, ".csv")))
-write_csv(LC_mean_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_meandata_", exp_group, "_vs_", ctrl_group, ".csv")))
+write_csv(LC_gene_means_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_meandata_", exp_group, "_vs_", ctrl_group, ".csv")))
