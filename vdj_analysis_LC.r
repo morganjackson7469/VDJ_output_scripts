@@ -53,6 +53,15 @@ control_group <- c("1763", "2265", "3851")
 exp_group <- "cysloop"
 ctrl_group <- "control"
 
+expected_genes_VKfam <- c(paste0("VK", 1:6))
+expected_genes_VLfam <- c(paste0("VL", 1:9))
+expected_genes_JKfam <- c(paste0("JK", 1:5))
+expected_genes_JLfam <- c(paste0("JL", 1:3))
+expected_genes_VJKpairs <- c(
+  with(expand.grid(V = paste0("VK", 1:6), J = paste0("JK", 1:5)), paste(V, J, sep = ":")))
+expected_genes_VJLpairs <- c(  
+  with(expand.grid(V = paste0("VL", 1:9), J = paste0("JL", 1:3)), paste(V, J, sep = ":")))
+
 
 ##FUNCTIONS
 #filter for experimental and control groups
@@ -64,19 +73,7 @@ LC_master_df <- LC_master_df %>%
   ), .after = 1)
 
 LC_comparison_df <- LC_master_df %>%
-  filter(group_ID %in% c(exp_group, ctrl_group)) 
-
-expected_genes_VKfam <- c(paste0("VK", 1:6))
-expected_genes_VLfam <- c(paste0("VL", 1:9))
-expected_genes_JKfam <- c(paste0("JK", 1:5))
-expected_genes_JLfam <- c(paste0("JL", 1:3))
-expected_genes_VJKpairs <- c(
-  with(expand.grid(V = paste0("VK", 1:6), J = paste0("JK", 1:5)), paste(V, J, sep = ":")))
-expected_genes_VJLpairs <- c(  
-  with(expand.grid(V = paste0("VL", 1:9), J = paste0("JL", 1:3)), paste(V, J, sep = ":")))
-
-#Count V:J gene pairings function
-LC_comparison_df <- LC_comparison_df %>%
+  filter(group_ID %in% c(exp_group, ctrl_group)) %>%
   mutate(VJ_pair = paste0(v_call, ":", j_call)) %>%
   mutate(
     V_gene_mut = str_extract(v_call, "IGKV(\\d+)|IGLV(\\d+)") %>%
@@ -105,8 +102,8 @@ LC_V_summary_df <- LC_comparison_df %>%
       fill = list(
         hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
         explicit = FALSE) %>%   
-    mutate(type = "V_gene") %>%
     mutate(
+     type = "V_gene",
      isotype = if_else(str_detect(gene, "VK"), "kappa", "lambda")) %>%  
     ungroup() %>%
     group_by(group_ID, BR_code, isotype) %>%
@@ -129,8 +126,8 @@ LC_J_summary_df <- LC_comparison_df %>%
       fill = list(
         hit_count = 0, LC_cdr3_aa_charge = 0, percent_value = 0, percent = 0), 
         explicit = FALSE) %>%  
-    mutate(type = "J_gene") %>%
     mutate(
+      type = "J_gene",
       isotype = if_else(str_detect(gene, "JK"), "kappa", "lambda")) %>%
     ungroup() %>%
     group_by(group_ID, BR_code, isotype) %>%
@@ -355,13 +352,14 @@ LC_J_family_distribution_charge_plot <- LC_summary_df %>%
 #V:J Gene Pairings counts, heatmap, and percentage plots
 
 #V:J pairs top 10 counts kappa and lambda
-VJ_pairs_LC_top10_count_plot <- LC_summary_df %>%
+VJ_pairs_LC_top10_count_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair") %>%
-  pivot_longer(cols = c("hit_count"),
-               names_to = "measure", values_to = "hit_count") %>%
-    arrange(desc(hit_count)) %>%
+  pivot_longer(cols = c("hit_count_gene"),
+               names_to = "measure", values_to = "hit_count_gene") %>%
+    arrange(desc(hit_count_gene)) %>%
     slice_head(n = 10) %>%
-  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    filter(percent_gene > 0) %>%
+  ggplot(aes(x = gene, y = hit_count_gene, fill = group_ID)) +
     geom_col(position = position_dodge(0.5)) +
     facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
     theme_grey(base_size = 14) +
@@ -372,13 +370,14 @@ VJ_pairs_LC_top10_count_plot <- LC_summary_df %>%
         plot = VJ_pairs_LC_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage kappa and lambda
-VJ_pairs_LC_top10_percent_plot <- LC_summary_df %>%
+VJ_pairs_LC_top10_percent_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair") %>%
-  pivot_longer(cols = c("percent"),
-               names_to = "measure", values_to = "percent") %>%
-    arrange(desc(percent)) %>%
+  pivot_longer(cols = c("percent_gene"),
+               names_to = "measure", values_to = "percent_gene") %>%
+    filter(percent_gene > 0) %>%
+    arrange(desc(percent_gene)) %>%
     slice_head(n = 10) %>%
-ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+ggplot(aes(x = gene, y = percent_gene, fill = group_ID)) +
   geom_col(position = position_dodge(0.5)) +
   facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
   theme_gray(base_size = 14) +
@@ -389,13 +388,14 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        plot = VJ_pairs_LC_top10_percent_plot, width = 8, height = 4)
 
 #V:J pairs top 10 counts kappa
-VJ_pairs_LC_kappa_top10_count_plot <- LC_summary_df %>%
+VJ_pairs_LC_kappa_top10_count_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", isotype == "kappa") %>%
-  pivot_longer(cols = c("hit_count"),
-               names_to = "measure", values_to = "hit_count") %>%
-    arrange(desc(hit_count)) %>%
+  pivot_longer(cols = c("hit_count_gene"),
+               names_to = "measure", values_to = "hit_count_gene") %>%
+    arrange(desc(hit_count_gene)) %>%
     slice_head(n = 10) %>%
-  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    filter(percent_gene > 0) %>%
+  ggplot(aes(x = gene, y = hit_count_gene, fill = group_ID)) +
     geom_col(position = position_dodge(0.5)) +
     facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
     theme_grey(base_size = 14) +
@@ -406,13 +406,14 @@ VJ_pairs_LC_kappa_top10_count_plot <- LC_summary_df %>%
         plot = VJ_pairs_LC_kappa_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage kappa
-VJ_pairs_LC_kappa_top10_percent_plot <- LC_summary_df %>%
+VJ_pairs_LC_kappa_top10_percent_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", isotype == "kappa") %>%
-  pivot_longer(cols = c("percent"),
-               names_to = "measure", values_to = "percent") %>%
-    arrange(desc(percent)) %>%
+  pivot_longer(cols = c("percent_gene"),
+               names_to = "measure", values_to = "percent_gene") %>%
+    arrange(desc(percent_gene)) %>%
     slice_head(n = 10) %>%
-ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+    filter(percent_gene > 0) %>%
+ggplot(aes(x = gene, y = percent_gene, fill = group_ID)) +
   geom_col(position = position_dodge(0.5)) +
   facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
   theme_gray(base_size = 14) +
@@ -423,13 +424,14 @@ ggplot(aes(x = gene, y = percent, fill = group_ID)) +
        plot = VJ_pairs_LC_kappa_top10_percent_plot, width = 8, height = 4)
 
 #V:J pairs top 10 counts lambda
-VJ_pairs_LC_lambda_top10_count_plot <- LC_summary_df %>%
+VJ_pairs_LC_lambda_top10_count_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", isotype == "lambda") %>%
-  pivot_longer(cols = c("hit_count"),
-               names_to = "measure", values_to = "hit_count") %>%
-    arrange(desc(hit_count)) %>%
+  pivot_longer(cols = c("hit_count_gene"),
+               names_to = "measure", values_to = "hit_count_gene") %>%
+    arrange(desc(hit_count_gene)) %>%
     slice_head(n = 10) %>%
-  ggplot(aes(x = gene, y = hit_count, fill = group_ID)) +
+    filter(percent_gene > 0) %>%
+  ggplot(aes(x = gene, y = hit_count_gene, fill = group_ID)) +
     geom_col(position = position_dodge(0.5)) +
     facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
     theme_grey(base_size = 14) +
@@ -440,13 +442,14 @@ VJ_pairs_LC_lambda_top10_count_plot <- LC_summary_df %>%
         plot = VJ_pairs_LC_lambda_top10_count_plot, width = 8, height = 4)
 
 #V:J pairs percentage lambda
-VJ_pairs_LC_lambda_top10_percent_plot <- LC_summary_df %>%
+VJ_pairs_LC_lambda_top10_percent_plot <- LC_gene_means_df %>%
   dplyr::filter(type == "VJ_pair", isotype == "lambda") %>%
-  pivot_longer(cols = c("percent"),
-               names_to = "measure", values_to = "percent") %>%
-    arrange(desc(percent)) %>%
+  pivot_longer(cols = c("percent_gene"),
+               names_to = "measure", values_to = "percent_gene") %>%
+    arrange(desc(percent_gene)) %>%
     slice_head(n = 10) %>%
-ggplot(aes(x = gene, y = percent, fill = group_ID)) +
+    filter(percent_gene > 0) %>%
+ggplot(aes(x = gene, y = percent_gene, fill = group_ID)) +
   geom_col(position = position_dodge(0.5)) +
   facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
   theme_gray(base_size = 14) +
