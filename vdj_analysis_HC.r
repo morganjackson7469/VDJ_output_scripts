@@ -28,12 +28,12 @@ BR_code <- c(
              "1470", "1507", "1515", "1533", "1551", "1602", "1763", "1767",
              "1783", "1792", "1823", "1839", "1924", "1956", "1963", "1982",
              "2035", "2133", "2140", "2149", "2161", "2162", "2177", "2180",
-             "2227", "2265", "HD279", "UTSW001", "UTSW002", "UTSW003",
-             "UTSW009", "UTSW013", "UTSW014", "UTSW015", "UTSW017",
-             "UTSW018", "UTSW019", "UTSW020", "UTSW022", "UTSW023",
-             "UTSW033", "227", "6082")
+             "2227", "2265", "HD279", "UTSW0001", "UTSW0002", "UTSW0003",
+             "UTSW0009", "UTSW0013", "UTSW0014", "UTSW0015", "UTSW0017",
+             "UTSW0018", "UTSW0019", "UTSW0020", "UTSW0022", "UTSW0023",
+             "UTSW0033", "227", "6082")
 
-project <- "CYSLOOP"
+project <- "MAV"
 
 new_plots_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/ggplot_outputs_group/", project)
  if (!dir.exists(new_plots_dir)) {
@@ -47,11 +47,11 @@ new_csv_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJse
 plots_output_dir <- new_plots_dir
 csv_output_dir <- new_csv_dir
 
-experimental_group <- c("3094", "6527", "5873")
-control_group <- c("1763", "2265", "3851")
+experimental_group <- c("1215", "2180", "1299", "1455", "1468", "1507", "1823", "2133")
+control_group <- c("2989", "UTSW0002", "UTSW0003", "UTSW0017", "UTSW0019", "UTSW0020", "UTSW0033")
 
-exp_group <- "cysloop"
-ctrl_group <- "control"
+exp_group <- "BAMS"
+ctrl_group <- "WAMS"
 
 expected_genes_VHfam <- c(paste0("VH", 1:7))
 expected_genes_JHfam <- c(paste0("JH", 1:6))
@@ -154,11 +154,19 @@ HC_gene_means_df <- HC_summary_df %>%
       percent_gene = if_else(total_hits_family == 0, 0, ((hit_count_gene / total_hits_family) * 100)),
       HC_cdr3_aa_charge_family = mean(HC_cdr3_aa_charge_gene)) 
 
+#to calculate cdr3 charge per BR code regardless of gene family - will need to add to csv export
+HC_cdr3_avgBR_charge <- HC_comparison_df %>%
+    group_by(group_ID, BR_code) %>%
+    filter(chain == "heavy") %>%
+    summarize(
+      mean_br_cdr3charge = mean(cdr3_aa_charge)) %>%
+    ungroup() %>%
+    group_by(group_ID) %>%
+    mutate(group_cdr3charge = mean(mean_br_cdr3charge))
 
 ###HEAVY CHAIN PLOTS
 
-# Variable kappa and lambda Family Distribution Plots 
-
+# Variable Family Distribution Plots 
 #counts plot is irrelevent - not normalized
 HC_V_family_distribution_counts_plot <- HC_summary_df %>%
   filter(type == "V_gene") %>%
@@ -176,9 +184,8 @@ HC_V_family_distribution_counts_plot <- HC_summary_df %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = hit_count, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Variable Gene Family Distribution",
        x = "Heavy Chain Gene Family", y = "# of Hits")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_V_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
@@ -193,49 +200,31 @@ HC_V_family_distribution_percent_plot <- HC_summary_df %>%
     group_by(group_ID) %>%
     dplyr::distinct(gene, .keep_all = TRUE),
     mapping = aes(x = gene, y = percent_gene, fill = group_ID), 
-    position = position_dodge2(width = 0.8, preserve = "total")) +
+    position = position_dodge2(width = 1, preserve = "total")) +
   geom_point(
     data = HC_summary_df %>%
     dplyr::filter(type == "V_gene") %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = percent, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
+  #geom_text(
+   # data = HC_gene_means_df %>%
+    #dplyr::filter(type == "V_gene") %>%
+    #group_by(group_ID) %>%
+    #dplyr::distinct(gene, .keep_all = TRUE),
+    #mapping = aes(x = gene, y = - 1, label = round(percent_gene, 2)),
+    #vjust = 4, size = 1.8, colour = "black", 
+    #position = position_dodge2(width = 1, preserve = "total")) +
+  #coord_cartesian(ylim = c(-5, max(HC_gene_means_df$percent_gene))) +
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Variable Gene Family Distribution",
        x = "Heavy Chain Gene Family", y = "% of Hits")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_V_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = HC_V_family_distribution_percent_plot, width = 6, height = 4)
 
-    
-#CDR3 charge distribution plot for V gene families 
-HC_V_family_distribution_charge_plot <- HC_summary_df %>%
-  filter(type == "V_gene") %>%
-  ggplot() +
-  geom_col(
-    data = HC_gene_means_df %>%
-    dplyr::filter(type == "V_gene") %>%
-    group_by(group_ID) %>%
-    dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = HC_cdr3_aa_charge_gene, fill = group_ID), 
-    position = position_dodge2(width = 0.8, preserve = "total")) +
-  geom_point(
-    data = HC_summary_df %>%
-    dplyr::filter(type == "V_gene") %>%
-    group_by(group_ID), 
-    mapping = aes(x = gene, y = HC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
-    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
-  theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Variable Gene Family CDR3 Charges",
-       x = "Heavy Chain Gene Family", y = "Avg CDR3 Charge")
-    ggsave(filename = file.path(plots_output_dir, paste0("HC_V_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
-       plot = HC_V_family_distribution_charge_plot, width = 6, height = 4)
 
-
-# Joint kappa and lambda Family Distribution Plots
+# Joint Family Distribution Plots
 #count plots are irrelevant
 HC_J_family_distribution_counts_plot <- HC_summary_df %>%
   filter(type == "J_gene") %>%
@@ -253,9 +242,8 @@ HC_J_family_distribution_counts_plot <- HC_summary_df %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = hit_count, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Joint Gene Family Distribution",
        x = "Heavy Chain Gene Family", y = "# of Hits")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_counts_", exp_group, "_vs_", ctrl_group, ".png")),
@@ -277,9 +265,17 @@ HC_J_family_distribution_percent_plot <- HC_summary_df %>%
     group_by(group_ID), 
     mapping = aes(x = gene, y = percent, shape = group_ID, group = group_ID), 
     size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
+  #geom_text(
+   # data = HC_gene_means_df %>%
+   # dplyr::filter(type == "J_gene") %>%
+   # group_by(group_ID) %>%
+   # dplyr::distinct(gene, .keep_all = TRUE),
+   # mapping = aes(x = gene, y = - 1, label = round(percent_gene, 2)),
+   # vjust = 4, size = 1.8, colour = "black", 
+   # position = position_dodge2(width = 1, preserve = "total")) +
+  #coord_cartesian(ylim = c(-5, max(HC_gene_means_df$percent_gene))) +
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Joint Gene Family Distribution",
        x = "Heavy Chain Gene Family", y = "% of Hits")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_percent_", exp_group, "_vs_", ctrl_group, ".png")),
@@ -287,33 +283,7 @@ HC_J_family_distribution_percent_plot <- HC_summary_df %>%
 
 
 
-#CDR3 charge distribution plot for J gene families
-HC_J_family_distribution_charge_plot <- HC_summary_df %>%
-  filter(type == "J_gene") %>%
-  ggplot() +
-  geom_col(
-    data = HC_gene_means_df %>%
-    dplyr::filter(type == "J_gene") %>%
-    group_by(group_ID) %>%
-    dplyr::distinct(gene, .keep_all = TRUE),
-    mapping = aes(x = gene, y = HC_cdr3_aa_charge_gene, fill = group_ID), 
-    position = position_dodge2(width = 0.8, preserve = "total")) +
-  geom_point(
-    data = HC_summary_df %>%
-    dplyr::filter(type == "J_gene") %>%
-    group_by(group_ID), 
-    mapping = aes(x = gene, y = HC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
-    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
-  #facet_grid(cols = vars(isotype), scales = "free_x") +
-  theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Joint Gene Family CDR3 Charges",
-       x = "Heavy Chain Gene Family", y = "Avg CDR3 Charge")
-    ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
-       plot = HC_J_family_distribution_charge_plot, width = 6, height = 4)
-
-
-#V:J Gene Pairings counts and percentage plots
+#V:J PAIRINGS counts and percentage plots
 
 #V:J pairs top 10 counts 
 VJ_pairs_HC_top10_count_plot <- HC_gene_means_df %>%
@@ -327,11 +297,11 @@ VJ_pairs_HC_top10_count_plot <- HC_gene_means_df %>%
     geom_col(position = position_dodge(0.5)) +
     facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
     theme_grey(base_size = 14) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
     labs(title = "Top 10 V:J pairs Heavy Chain",
         x = "V:J pairs", y = "Count")
       ggsave(filename = file.path(plots_output_dir, paste0("HC_V:J_pairs_top10_count_", exp_group, "_vs_", ctrl_group, ".png")),
-        plot = VJ_pairs_HC_top10_count_plot, width = 8, height = 4)
+        plot = VJ_pairs_HC_top10_count_plot, width = 12, height = 4)
 
 #V:J pairs percentage
 VJ_pairs_HC_top10_percent_plot <- HC_gene_means_df %>%
@@ -345,15 +315,16 @@ ggplot(aes(x = gene, y = percent_gene, fill = group_ID)) +
   geom_col(position = position_dodge(0.5)) +
   facet_grid(rows = vars(measure), cols = vars(group_ID), scales = "free") +
   theme_gray(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(color = "black", angle = 0, hjust = 0.5, vjust = -2, margin=margin(r=15)), 
+        axis.title.x = element_text(hjust = 0.5, size = 14, margin=margin(t=20))) +
   labs(title = "Top 10 V:J pairs Heavy Chain",
        x = "V:J pairs", y = "Percentage")
   ggsave(filename = file.path(plots_output_dir, paste0("HC_V:J_pairs_top10_percent_", exp_group, "_vs_", ctrl_group, ".png")),
-       plot = VJ_pairs_HC_top10_percent_plot, width = 8, height = 4)
+       plot = VJ_pairs_HC_top10_percent_plot, width = 18, height = 8)
 
 
 
-#CDR3 Charge  
+#CDR3 CHARGES
 HC_charge_plot <- HC_gene_means_df %>%
   dplyr::filter(type == "V_gene" | type == "J_gene") %>%
   ggplot() +
@@ -376,7 +347,6 @@ HC_charge_plot <- HC_gene_means_df %>%
               #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
               #mutate(measure = "HC_cdr3_aa_charge"),
             #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
-  #facet_grid(cols = vars(type), scales = "free_x") +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Heavy Chain CDR3 Charges",
@@ -384,7 +354,98 @@ HC_charge_plot <- HC_gene_means_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("HC_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = HC_charge_plot, width = 6, height = 4)
 
-#CDR3 lengths 
+#CDR3 charge averages per BR code (avg of total br)
+#not average of families per br code 
+HC_charge_plot_perBR <- HC_cdr3_avgBR_charge %>%
+  ggplot() +
+  geom_col(
+    data = HC_cdr3_avgBR_charge %>%
+    group_by(group_ID) %>%
+    distinct(group_cdr3charge),
+    mapping = aes(x = group_ID, y = group_cdr3charge, fill = group_ID), 
+    position = "dodge") +
+  geom_point(
+    data = HC_cdr3_avgBR_charge %>%
+    group_by(group_ID, BR_code),
+    mapping = aes(x = group_ID, y = mean_br_cdr3charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  #geom_text(data = summary_df %>%
+              #dplyr::filter(type == "V_gene" | type == "J_gene") %>%
+              #group_by(group_ID, ID, type) %>%
+              #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
+              #mutate(measure = "HC_cdr3_aa_charge"),
+            #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  labs(title = "Heavy Chain CDR3 Charges",
+       x = "Group", y = "Avg CDR3 charge")
+    ggsave(filename = file.path(plots_output_dir, paste0("HC_CDR3_charge_perBR_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = HC_charge_plot_perBR, width = 6, height = 4)
+
+#CDR3 charge distribution plot for V gene families 
+HC_V_family_distribution_charge_plot <- HC_summary_df %>%
+  filter(type == "V_gene") %>%
+  ggplot() +
+  geom_col(
+    data = HC_gene_means_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = HC_cdr3_aa_charge_gene, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = HC_summary_df %>%
+    dplyr::filter(type == "V_gene") %>%
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = HC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  #geom_text(
+   # data = HC_gene_means_df %>%
+   # dplyr::filter(type == "V_gene") %>%
+   # group_by(group_ID) %>%
+   # dplyr::distinct(gene, .keep_all = TRUE),
+   # mapping = aes(x = gene, y = - 1, label = round(HC_cdr3_aa_charge_gene, 2)),
+   # vjust = 4, size = 1.8, colour = "black", 
+   # position = position_dodge2(width = 1, preserve = "total")) +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  labs(title = "Variable Gene Family CDR3 Charges",
+       x = "Heavy Chain Gene Family", y = "Avg CDR3 Charge")
+    ggsave(filename = file.path(plots_output_dir, paste0("HC_V_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = HC_V_family_distribution_charge_plot, width = 6, height = 4)
+
+#CDR3 charge distribution plot for J gene families
+HC_J_family_distribution_charge_plot <- HC_summary_df %>%
+  filter(type == "J_gene") %>%
+  ggplot() +
+  geom_col(
+    data = HC_gene_means_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = HC_cdr3_aa_charge_gene, fill = group_ID), 
+    position = position_dodge2(width = 0.8, preserve = "total")) +
+  geom_point(
+    data = HC_summary_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID), 
+    mapping = aes(x = gene, y = HC_cdr3_aa_charge, shape = group_ID, group = group_ID), 
+    size = 1.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  geom_text(
+    data = HC_gene_means_df %>%
+    dplyr::filter(type == "J_gene") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE),
+    mapping = aes(x = gene, y = - 1, label = round(HC_cdr3_aa_charge_gene, 2)),
+    vjust = 4, size = 1.8, colour = "black", 
+    position = position_dodge2(width = 1, preserve = "total")) +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  labs(title = "Joint Gene Family CDR3 Charges",
+       x = "Heavy Chain Gene Family", y = "Avg CDR3 Charge")
+    ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
+       plot = HC_J_family_distribution_charge_plot, width = 6, height = 4)
+
 
 #V:J pairs set chord colors
 row.col = adjustcolor(c(
@@ -472,10 +533,5 @@ HC_export_individual_df <- HC_comparison_df %>%
 
 HC_export_group_df <- HC_summary_df %>%
 
-
-#write_csv(HC_export_individual_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_individualdata_", exp_group, "_vs_", ctrl_group, ".csv")))
-#write_csv(HC_export_group_df, file.path(csv_output_dir, paste0(project, "_LightChain_VJ_groupdata_", exp_group, "_vs_", ctrl_group, ".csv")))
-
 write_csv(HC_summary_df, file.path(csv_output_dir, paste0(project, "_HeavyChain_VJ_summarydata_", exp_group, "_vs_", ctrl_group, ".csv")))
 write_csv(HC_gene_means_df, file.path(csv_output_dir, paste0(project, "_HeavyChain_VJ_meandata_", exp_group, "_vs_", ctrl_group, ".csv")))
-#write_csv(HC_kappalambda_ratio_df, file.path(csv_output_dir, paste0(project, "_LightChain_kappalambda_ratios_", exp_group, "_vs_", ctrl_group, ".csv")))
