@@ -502,6 +502,7 @@ HC_charge_plot <- HC_gene_means_df %>%
               #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
               #mutate(measure = "HC_cdr3_aa_charge"),
             #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  ylim(-1.0, 0.2) +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Heavy Chain CDR3 Charges",
@@ -534,6 +535,7 @@ HC_charge_plot_perBR <- HC_cdr3_avgBR_charge %>%
               #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
               #mutate(measure = "HC_cdr3_aa_charge"),
             #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
+  ylim(-2.0, 0.2) +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(title = "Heavy Chain CDR3 Charges",
