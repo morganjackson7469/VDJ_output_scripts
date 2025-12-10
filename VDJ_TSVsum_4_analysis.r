@@ -65,10 +65,10 @@ summary_tsv_NGS <- summary_tsv_NGS %>%
     filter(productive == "TRUE") %>%
     mutate(BR_code = str_extract(source_file, paste0(BR_code, collapse = "|"))) %>%
     mutate(sample_type = case_when(
-      str_detect(sequence_id, "PBMC") ~ "PBMC",
-      str_detect(sequence_id, "CSF") ~ "CSF",
-      str_detect(sequence_id, "Bld") ~ "Blood",
-      TRUE ~ "NA")) %>%
+     str_detect(sequence_id, "PBMC") ~ "PBMC",
+     str_detect(sequence_id, "CSF") ~ "CSF",
+     str_detect(sequence_id, "Bld") ~ "Blood",
+     TRUE ~ "NA")) %>%
     mutate(chain = case_when(
       str_detect(v_call, "IGH") ~ "heavy",
       str_detect(v_call, "IGK|IGL") ~ "light",
