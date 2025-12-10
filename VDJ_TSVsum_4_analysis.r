@@ -43,7 +43,7 @@ BR_code <- c(
               "USCHC005",	"USCH043",	"USCH020",	"USCH021",	"USCH032"
 )
 
-tsv_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/MAV_NGS_summaryfiles/"
+tsv_dir <- "/mnt/md0/Projects/MonsonLab/MAV/summary"
 output_dir <- "/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/"
 
 #list all tsv files in the directory 
@@ -77,8 +77,9 @@ summary_tsv_NGS <- summary_tsv_NGS %>%
       str_detect(v_call, "IGKV") ~ "kappa",
       str_detect(v_call, "IGLV") ~ "lambda",
       TRUE ~ "NA")) %>%
-    relocate(BR_code, chain, sample_type, .before = v_call) %>%
-    relocate(source_file, .after = sequence_id) %>%
+    relocate(BR_code, chain, sample_type, 
+              .before = v_call) %>%
+    relocate(source_file, .after = sequence_id) 
     relocate(LC_isotype, .after = chain)
 
 print("finished creating summary dataframe")

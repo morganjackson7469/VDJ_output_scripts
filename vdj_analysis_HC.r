@@ -11,20 +11,20 @@ library(ggraph)
 library(circlize)
 library(tidyr)
 library(readr)
-library(vscDebugger)
 library(purrr)
 library(scales)
 library(languageserver)
 library(httpgd)
 library(ggbeeswarm)
+library(gtools)
 
 #read excel file into tibble
-HC_master_df <- summary_tsv_all %>%
- filter(chain == "heavy")  
+HC_master_df <- summary_tsv_NGS %>%
+ filter(chain == "heavy")
 
 #define BR_Code list
 BR_code <- c(
-                         "2405", "2443", "2778", "2929", "2989", "3094", "3851", "5873",
+             "2405", "2443", "2778", "2929", "2989", "3094", "3851", "5873",
              "6527", "20045", "1079", "1215", "1299", "1400", "1455", "1468",
              "1470", "1507", "1515", "1533", "1551", "1602", "1763", "1767",
              "1783", "1792", "1823", "1839", "1924", "1956", "1963", "1982",
@@ -63,13 +63,13 @@ BR_code <- c(
               "USCHC005",	"USCH043",	"USCH020",	"USCH021",	"USCH032"
 )
 
-project <- "MAV_BAHC_BAMS-ty"
+project <- "MAV_NGS"
 
-new_plots_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/ggplot_outputs_group/", project)
+new_plots_dir <- paste0("/mnt/md0/s440792/output/", project, "/ggplots")
  if (!dir.exists(new_plots_dir)) {
    dir.create(new_plots_dir, recursive = TRUE)
  }
-new_csv_dir <- paste0("/home/morganjackson/bioinformatics/data/vdj_outputs/VDJserver_JCVIsamples_20250519/output/csv_outputs_group/", project)
+new_csv_dir <- paste0("/mnt/md0/s440792/output/", project, "/csv_outputs")
  if (!dir.exists(new_csv_dir)) {
    dir.create(new_csv_dir, recursive = TRUE)
  }
@@ -78,15 +78,15 @@ plots_output_dir <- new_plots_dir
 csv_output_dir <- new_csv_dir
 
 experimental_group <- c("J10", "J130", "J20", "J201", "J203", "J218", "J220",
-                          "J24", "J26", "J34", "J42", "J46", "J8", "J9", "J91",
-                          "J93", "3895", "3843", "1551", "3889", "32", "3891", 
-                          "3880", "3911", "176", "3864", "3870", "3873", "1400",
-                          "3933", "3934", "3945", "3961", "3976", "3892", "3892", 
-                           "3895", "3931")
+                        "J24", "J26", "J34", "J42", "J46", "J8", "J9", "J91",
+                        "J93", "3895", "3843", "1551", "3889", "32", "3891",
+                        "3880", "3911", "176", "3864", "3870", "3873", "1400",
+                        "3933", "3934", "3945", "3961", "3976", "3892", "3892",
+                        "3895", "3931")
 control_group <- c("1559", "1561", "1607", "1618", "1629", "1647", "1690",
                     "1702", "1707", "1713", "1724", "1790", "1831", "1837",
-                    "1848", "1850", "1589", "1606", "1611", "1617", "1636", 
-                    "1646", "1650", "1658", "1692", "1698", "1717", "1722", 
+                    "1848", "1850", "1589", "1606", "1611", "1617", "1636",
+                    "1646", "1650", "1658", "1692", "1698", "1717", "1722",
                     "1734", "1741", "1747", "1787", "1796", "1801", "1825",
                     "1851", "1483", "1616", "1638", "1697")
 
@@ -115,8 +115,8 @@ HC_comparison_df <- HC_master_df %>%
     J_gene_mut = str_extract(j_call, "IGHJ(\\d+)") %>%
       str_replace("IGHJ", "JH"),
     VJ_only_gene = paste0(V_gene_mut, ":", J_gene_mut)) %>%
-  relocate(V_gene_mut, J_gene_mut, VJ_only_gene, VJ_pair, .before = v_call) %>%
-  select(-LC_isotype)
+  relocate(V_gene_mut, J_gene_mut, VJ_only_gene, VJ_pair, .before = v_call)
+  #select(-LC_isotype)
 
 
 #summary_df is a grouped df so all df made from it need to be grouped 
@@ -635,8 +635,11 @@ VJ_pairs_HC_chord_diagram_exp <- HC_gene_means_df %>%
   circos.clear()
   all_sectors <- c(levels(VJ_pairs_HC_chord_diagram_exp$VH),
                    levels(VJ_pairs_HC_chord_diagram_exp$JH))
-  gap_vec[length(levels(VJ_pairs_HC_chord_diagram_exp$VH))] <- 15
-  gap_vec <- rep(5, length(all_sectors))
+  gap_vec <- c(
+                #big gap between VH and JH
+                rep(5, length(levels(VJ_pairs_HC_chord_diagram_exp$VH))-1), 15,
+                #closing gap
+                rep(5, length(levels(VJ_pairs_HC_chord_diagram_exp$JH)) -1), 15)
   circos.par(gap.after = gap_vec)
   png(filename = file.path(plots_output_dir, paste0("HC_VJ_pairs_chord_diagram_", exp_group, ".png")), 
       width = 800, height = 800)
@@ -679,8 +682,11 @@ VJ_pairs_HC_chord_diagram_control <- HC_gene_means_df %>%
   circos.clear()
   all_sectors <- c(levels(VJ_pairs_HC_chord_diagram_control$VH),
                    levels(VJ_pairs_HC_chord_diagram_control$JH))
-  gap_vec[length(levels(VJ_pairs_HC_chord_diagram_control$VH))] <- 15
-  gap_vec <- rep(5, length(all_sectors))
+  gap_vec <- c(
+                #big gap between VH and JH
+                rep(5, length(levels(VJ_pairs_HC_chord_diagram_exp$VH))-1), 15,
+                #closing gap
+                rep(5, length(levels(VJ_pairs_HC_chord_diagram_exp$JH)) -1), 15)
   circos.par(gap.after = gap_vec)
   png(filename = file.path(plots_output_dir, paste0("HC_VJ_pairs_chord_diagram_", ctrl_group, ".png")), 
       width = 800, height = 800)
