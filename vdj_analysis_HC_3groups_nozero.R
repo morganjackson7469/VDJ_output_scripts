@@ -1,4 +1,4 @@
-###LOAD LIBRARIES
+###LOAD LIBRARIES AND DATA ----------
 #%%
 #load required libraries
 
@@ -23,6 +23,8 @@ library(ggpubr)
 library(lmtest)
 library(broom)
 library(rstatix)
+library(car)
+library(patchwork)
 
 setwd("/mnt/md0/s440792/r_data/VDJ_output_scripts")
 load("NGS_BA_workspace2.RData")
@@ -41,8 +43,8 @@ BR_code <- c(
              "2227", "2265", "HD279", "UTSW0001", "UTSW0002", "UTSW0003",
              "UTSW0009", "UTSW0013", "UTSW0014", "UTSW0015", "UTSW0017",
              "UTSW0018", "UTSW0019", "UTSW0020", "UTSW0022", "UTSW0023",
-             "UTSW0033", "6082",
-             "1455", "2177",	"2180",	"992",	"1823",	"1123",	"1299",	"1490",	"1507",	
+             "UTSW0033", "6082", "1455", "2177",	"2180",	"992",	
+             "1823", "1123",	"1299",	"1490",	"1507",	
              "1844",	"2133",	"1574",	"3500", "J10",	"J130",	"J20",	"J201",	"J203",
              "J218",	"J220",	"J24",	"J26",	"J34",	"J42",	"J46",	"J8",	"J9",	"J91",
              "J93", "6634",	"1559",	"1561",	"1607",	"1618",	"1629",	"1647",	"1690",	
@@ -104,7 +106,6 @@ control_group <- c("1559", "1561", "1607", "1618", "1629", "1647", "1690",
                     "1734", "1741", "1747", "1787", "1796", "1801", "1825",
                     "1851")
 
-## T TEST WILL NOT WORK WITH 3 GROUPS 
 #how to set it up to automatically detect if there are 2 groups or 3 or more? 
 exp_group_A <- "BAMS_nonNAT"
 exp_group_B <- "BAMS_NAT"
@@ -145,14 +146,6 @@ group_colors <- c(
   "BAMS_nonNAT" = "#6EDF72", 
   "BAMS_NAT" = "#CEA57A")
 
-
-#scott and sams scripts do not account for zeros if a gene or family is missing for a BR code
-expected_genes_VHfam <- c(paste0("VH", 1:7))
-expected_genes_JHfam <- c(paste0("JH", 1:6))
-expected_genes_VJHpairs <- c(
- with(expand.grid(V = paste0("VH", 1:7), J = paste0("JH", 1:6)), paste(V, J, sep = ":")))
-
-##FUNCTIONS
 #filter for experimental and control groups
 HC_master_df <- HC_master_df %>%
   mutate(group_ID = case_when(
@@ -183,23 +176,87 @@ HC_comparison_df <- HC_master_df %>%
   relocate(V_gene_mut, J_gene_mut, VJ_only_gene, VJ_pair, V_call_mut, VJ_pair_gene, .before = v_call) %>%
   select(-LC_isotype, -BR_code_matched)
 
-# Individual V genes and VH4
+# TEMPLATE FUNCTIONS ------
+## template for plotting pairwise test brackets on grouped graphs with any number of values on x-axis, groups, but must change dodge width
+#%%
+get_dodge_postion <- function(
+  plot_data, 
+  x_var,
+  group_var,
+  y_var,
+  dodge_width = 0.9
+ ) {
+  plot_data <- plot_data %>%
+    arrange(
+      .data[[x_var]],
+      .data[[group_var]]
+    )
+  temp_plot <- ggplot(
+    plot_data,
+    aes(
+      x = .data[[x_var]],
+      y = .data[[y_var]],
+      fill = .data[[group_var]]
+    )
+  ) +
+  geom_col(
+    position = position_dodge2(width = dodge_width)
+  )
+
+  build_plot <- ggplot_build(temp_plot)
+
+  position_lookup <- plot_data %>%
+    select(
+      all_of(x_var),
+      all_of(group_var)) %>%
+      distinct() %>%
+      bind_cols(
+        build_plot$data[[1]] %>%
+          select(x)
+      )
+    names(position_lookup)[1:2] <- c("x_group", "group")
+    position_lookup
+ }
+
+add_bracket_position <- function(
+  pairwise_df, 
+  position_lookup,
+  x_group_col = "gene"
+) {
+  pairwise_df %>%
+    left_join(
+      position_lookup %>%
+        rename(
+          !!x_group_col := x_group,
+          group1 = group,
+          xmin = x
+        ),
+        by = c(x_group_col, "group1")
+    ) %>%
+    left_join(
+      position_lookup %>%
+        rename(
+          !!x_group_col := x_group,
+          group2 = group, 
+          xmax = x
+        ),
+        by = c(x_group_col, "group2"))%>%
+      mutate(
+        xmin = as.numeric(xmin),
+        xmax = as.numeric(xmax)
+      )
+}
+
+
+
+
+# Individual V genes and VH4 --------
 #%%
 ## THIS ANALYSIS NEEDS TO BE CORRECTED FOR THE MEAN CALCULATION percent_gene
+## this is all V genes
 HC_V_call_df <- HC_comparison_df %>%
     #remove allele number and extra allele calls 
     group_by(group_ID, BR_code, V_call_mut) %>%
-    ##put this in the comparison df do not need to do each time
-    #mutate(
-     # v_call = map_chr(v_call_mut, function(x) {
-     #   v_genes <- str_split(x, ",")[[1]]
-     #   v_genes <- sub("\\*.*$", "", v_genes)
-     #   v_genes <- v_genes[!grepl("D$", v_genes)]
-     #   v_genes <- sub("^IGHV", "VH", v_genes)
-        #v_genes <- sub("^VH4-4$", "VH4-04", v_genes)
-     #   v_genes <- unique(v_genes)
-     #   paste(v_genes, collapse = ",")
-     # })) %>%
     summarize(
       hit_count = n()) %>%
     ungroup() %>%
@@ -224,7 +281,7 @@ HC_V_call_means_df <- HC_V_call_df %>%
 # individual V gene and J gene pairings 
 HC_VJ_call_df <- HC_comparison_df %>%
     #remove allele number and extra allele calls 
-    group_by(group_ID, BR_code, VJ_pair) %>%
+    #group_by(group_ID, BR_code, VJ_pair_gene) %>%
     #added to comparison df can be removed
     #mutate(
     #V_gene_mut = map_chr(v_call, function(x) {
@@ -257,17 +314,18 @@ HC_VJ_call_df <- HC_comparison_df %>%
     mutate(
       mean_cdr3_length = mean(cdr3_aa_length, na.rm = TRUE),
       mean_cdr3_charge = mean(cdr3_aa_charge, na.rm = TRUE))
-#this means calculation is incorrect 
+#corrected percent_gene
 HC_VJ_call_means_df <- HC_VJ_call_df %>%
     group_by(group_ID, VJ_pair_gene) %>%
     summarize(
       hit_count_gene = sum(hit_count),
+      percent_gene = mean(percent),
       percent_stdev = unique(percent_stdev),
       mean_cdr3_length = mean(cdr3_aa_length, na.rm = TRUE),
       mean_cdr3_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
     mutate(
-      total_hits_gene = sum(hit_count_gene),
-      percent_gene = if_else(total_hits_gene == 0, 0, ((hit_count_gene / total_hits_gene) * 100)))
+      total_hits_gene = sum(hit_count_gene))
+      #percent_gene = if_else(total_hits_gene == 0, 0, ((hit_count_gene / total_hits_gene) * 100)))
 
 #Individual V genes to J gene pairings - VH4 ONLY
 #need to make VH4-4 to VH4-04 and move it to the front 
@@ -318,10 +376,11 @@ HC_VH4_J_call_means_df <- HC_VH4_J_call_df %>%
     group_by(group_ID, VJ_pair_gene) %>%
     summarize(
       hit_count_gene = sum(hit_count),
-      percent_stdev = unique(percent_stdev)) %>%
+      percent_stdev = unique(percent_stdev),
+      percent_gene = mean(percent)) %>%
     mutate(
-      total_hits_gene = sum(hit_count_gene),
-      percent_gene = if_else(total_hits_gene == 0, 0, ((hit_count_gene / total_hits_gene) * 100))
+      total_hits_gene = sum(hit_count_gene)
+      #percent_gene = if_else(total_hits_gene == 0, 0, ((hit_count_gene / total_hits_gene) * 100))
     )
 
 #Individual VH4 genes only NO J GENE 
@@ -329,19 +388,7 @@ HC_VH4_call_df <- HC_comparison_df %>%
     #remove allele number and extra allele calls
     filter(V_gene_mut == "VH4") %>%
     select(-J_gene_mut) %>%
-    #group_by(group_ID, BR_code, V_gene_mut) %>%
-    #added to comparison df
-    #mutate(
-    #V_gene_mut = map_chr(v_call, function(x) {
-      #the [1] removes everything after the first comma for ones with multiple gene calls
-     #   v_genes <- str_split(x, ",")[[1]][1]
-     #   v_genes <- sub("\\*.*$", "", v_genes)
-     #   v_genes <- sub("^IGHV", "VH", v_genes)
-     #  v_genes <- sub("^VH4-4$", "VH4-04", v_genes)
-      #  v_genes <- unique(v_genes)
-      #  paste(v_genes, collapse = ",")})) %>%
     filter(V_gene_mut != "VH4/OR15-8") %>%
-    #ungroup() %>%
     group_by(group_ID, BR_code, V_call_mut) %>%
     summarize(
       V_call_mut = first(V_call_mut),
@@ -364,38 +411,32 @@ HC_VH4_call_outliers <- HC_VH4_call_df %>%
     group_by(group_ID, V_call_mut) %>%
     identify_outliers(percent)
 
-#percent_gene needs to be recalculated this is all wrong, format it like VH4_bar
 HC_VH4_call_means_df <- HC_VH4_call_df %>%
     group_by(group_ID, V_call_mut) %>%
     summarize(
       hit_count_gene = sum(hit_count),
-      percent_stdev = unique(percent_stdev),
-      n_gene = n()) %>%
-    mutate(
-      total_hits_gene = sum(hit_count_gene),
-      #FIX THIS HERE 
-      percent_gene = if_else(total_hits_gene == 0, 0, ((hit_count_gene / total_hits_gene) * 100))
-        )
-
+      percent_stdev = sd(percent),
+      percent_gene = mean(percent),
+      n_gene = n())
       
 write_csv(VH4_bar_df, file.path(csv_output_dir, paste0(project, "_HC_VH4_call_means_df.csv")))
 
-
+HC_VJ_call_df$group_ID <- factor(HC_VJ_call_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
 HC_VH4_4_J6_family_distribution_percent_plot <- HC_VJ_call_df %>%
-  filter(V_call_mut == "VH4" &
+  filter(V_call_mut == "VH4-04" &
           J_gene_mut == "JH6" &
           V_call_mut != "OR15-8") %>%
   ggplot() +
   geom_col(
     data = HC_VJ_call_df %>%
-    dplyr::filter(V_call_mut == "VH4-4") %>%
+    dplyr::filter(V_call_mut == "VH4-04") %>%
     group_by(group_ID, J_gene_mut) %>%
     dplyr::distinct(V_call_mut, .keep_all = TRUE),
     mapping = aes(x = VJ_pair_gene, y = percent, fill = group_ID), 
     position = position_dodge2(width = 1, preserve = "total")) +
   geom_beeswarm(
     data = HC_VJ_call_df %>%
-    dplyr::filter(V_gene_mut == "VH4-4") %>%
+    dplyr::filter(V_call_mut == "VH4-04") %>%
     group_by(group_ID, J_gene_mut), 
     mapping = aes(x = VJ_pair_gene, y = percent, shape = group_ID, group = group_ID), 
     dodge.width = 0.8, method = "center", preserve.data.axis = TRUE,
@@ -421,18 +462,24 @@ HC_VH4_4_J6_family_distribution_percent_plot <- HC_VJ_call_df %>%
   #coord_cartesian(ylim = c(-5, max(HC_gene_means_df$percent_gene))) +
   theme_classic(base_size = 14) +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  labs(title = "VH4-4 Gene Pairing",
+  labs(title = "VH4-04 Gene Pairing",
        x = " ", y = "% of All Gene Pairings") 
-  ggsave(filename = file.path(plots_output_dir, paste0("3HC_VH4:JH6_dis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
-       plot = HC_VH4_family_distribution_percent_plot, width = 10, height = 4)
+  ggsave(filename = file.path(plots_output_dir, paste0("4HC_VH4:JH6_dis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
+       plot = HC_VH4_4_J6_family_distribution_percent_plot, width = 10, height = 4)
+  HC_VH4_4_J6_family_distribution_percent_plot
 
 #make group ID factor to be reordered in the graph
-HC_VH4_call_df$group_ID <- factor(HC_VH4_call_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
 
 
+## VH4 GENES ANALYSIS AND PLOTTING ------
 #is it possible to build somekind of template at the top to fill these dataframes in? (group_by(x, y) then define them here? idk)
 #oneway.test is for welch's anova
 ## there are invalid numbers in some of the SD that need to be turned into NA, check why invalid number
+
+HC_VH4_call_df$group_ID <- factor(HC_VH4_call_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
+
+## filter data for plotting and analysis 
+## need to filter out the multiple gene calls for the analysis because some are non-existent and cannot be compared 
  VH4_bar_df <- HC_VH4_call_df %>%
     group_by(group_ID, V_call_mut) %>%
     filter(!grepl(",", V_call_mut),
@@ -447,63 +494,77 @@ HC_VH4_call_df$group_ID <- factor(HC_VH4_call_df$group_ID, levels=c('BAHC','BAMS
            V_call_mut != "VH4/OR15-8") %>%
     ungroup()
 
-#stats for just VH4-04
-## need to loop these stats through all genes 
-HC_VH4_04_filtered <- HC_VH4_call_df %>%
-                      filter(V_call_mut == "VH4-04") 
-
-HC_VH4_04_model <- oneway.test(percent ~ group_ID, data = HC_VH4_04_filtered, var.equal = FALSE)
-                print(HC_VH4_04_model)
-
-HC_VH4_04_ttest <- HC_VH4_04_filtered %>%
-  pairwise_t_test(
+levene_results_VH4_genes <- VH4_point_df %>%
+  group_by(V_call_mut) %>%
+  group_modify(~{
+  leveneTest(percent ~ group_ID,
+           data = .x) %>%
+  tidy() 
+  })%>%
+  ungroup()
+ 
+welch_anova_VH4_genes <- VH4_point_df %>%
+  group_by(V_call_mut) %>%
+  group_modify(~{
+  oneway.test(
     percent ~ group_ID,
-    p.adjust.method = "BH",
-    pool.sd = FALSE
-  ) %>%
-  add_xy_position(x = "V_gene_mut", 
-                #step.increase = 0.25)
+  data = .x,
+  var.equal = FALSE) %>%
+  tidy() 
+  }) %>%
+  ungroup()
+
+pairwise_ttest_VH4_genes <- VH4_point_df %>%
+  group_by(V_call_mut) %>%
+  group_modify(~{
+    pairwise_t_test(
+      .x,
+      percent ~ group_ID,
+      p.adjust.method = "BH",
+      pool.sd = FALSE) %>%
+    tidy()
+  }) %>%
+  ungroup()
+
+
+## get x and y positions for pvalue bracket positioning
+  VH4_gene_bar_positions <- get_dodge_postion(
+    plot_data = VH4_bar_df,
+    x_var = "V_call_mut",
+    group_var = "group_ID",
+    y_var = "avg_percent"
   )
-print(HC_VH4_04_ttest)
 
-ymax <- VH4_bar_df %>%
-    filter(V_call_mut == "VH4-04") %>%
-    summarise(y = max(avg_percent)) %>%
-    pull(y)
+  VH4_gene_pairwise_results <- add_bracket_position(
+    pairwise_df = pairwise_ttest_VH4_genes,
+    position_lookup = VH4_gene_bar_positions,
+    x_group_col = "V_call_mut"
+  )
 
-    max_y <- max(
-      c(
-        HC_VH4_04_ttest$y.position
-      ),
-      na.rm = TRUE
-    )
+  VH4_gene_max <- VH4_point_df %>%
+    group_by(V_call_mut) %>%
+    summarize(
+      ymax = max(percent, na.rm = TRUE),
+      .groups = "drop")
+  
+  VH4_gene_pairwise_results <- VH4_gene_pairwise_results %>%
+    left_join(
+      VH4_gene_max,
+      by = "V_call_mut"
+    ) %>%
+    group_by(V_call_mut) %>%
+    mutate(
+      y.position = ymax * (1.05)
+    ) %>%
+    ungroup() %>%
+    as.data.frame()
 
-#stats for all VH4 genes 
-#HC_VH4_04_filtered <- HC_VH4_call_df %>%
- #                     filter(V_gene_mut == "VH4-04") 
-
-#HC_VH4_04_model <- oneway.test(percent ~ group_ID, data = HC_VH4_04_filtered, var.equal = FALSE)
- #               print(HC_VH4_04_model)
-
-#HC_VH4_04_ttest <- HC_VH4_04_filtered %>%
- # pairwise_t_test(
-  #  percent ~ group_ID,
-  #  p.adjust.method = "BH",
-  #  pool.sd = FALSE
-  #) %>%
-  #add_xy_position(x = "V_gene_mut", 
-                #step.increase = 0.25)
-  #)
-
-HC_VH4_only_family_distribution_percent_plot <- VH4_point_df %>%
-  #filter(V_gene_mut == "VH4") %>%
-  #filter(V_gene_mut != "VH4/OR15-8") %>%
-  ggplot() +
+HC_VH4_genes_family_distribution_percent_plot <- ggplot() +
   geom_col(
     data = VH4_bar_df,
     mapping = aes(x = V_call_mut, y = avg_percent, fill = group_ID), 
     position = position_dodge2(width = 0.9),
-    colour = "black", linewidth = 1.0) +
+    colour = "black", linewidth = 0.5) +
   geom_beeswarm(
                   data = VH4_point_df,
                   mapping = aes(x = V_call_mut, y = percent, shape = group_ID, group = group_ID), 
@@ -515,50 +576,212 @@ HC_VH4_only_family_distribution_percent_plot <- VH4_point_df %>%
                   corral.width = 0.05, 
                   alpha = 0.9
                   ) +
-  #geom_errorbar(
-   #   data = VH4_bar_df,
-   # mapping = aes(x = V_gene_mut, y = avg_percent, ymin = avg_percent, ymax = avg_percent + percent_sd,
-    # group = group_ID),
-   #width = 0.5, 
-  #position = position_dodge2(width = 0.9, padding = 0.6)
-   #  ) +
-  #geom_text(
-   # data = HC_gene_means_df %>%
-    #dplyr::filter(type == "V_gene") %>%
-    #group_by(group_ID) %>%
-    #dplyr::distinct(gene, .keep_all = TRUE),
-    #mapping = aes(x = gene, y = - 1, label = round(percent_gene, 2)),
-    #vjust = 4, size = 1.8, colour = "black", 
-    #position = position_dodge2(width = 1, preserve = "total")) +
-  #coord_cartesian(ylim = c(-5, max(HC_gene_means_df$percent_gene))) + 
+  geom_errorbar(
+   data = VH4_bar_df,
+   mapping = aes(x = V_call_mut, y= avg_percent, 
+                ymin = pmax(0, avg_percent - percent_sd), 
+                ymax = avg_percent + percent_sd,
+                group = group_ID),
+                position = position_dodge2(width = 0.9, padding = 0.6)
+              ) +
   stat_pvalue_manual(
-    HC_VH4_04_ttest,
+    VH4_gene_pairwise_results,
+    xmin = "xmin",
+    xmax = "xmax",
     y.position = "y.position", 
-    position = position_dodge(0.8),
-    size = 1, 
-    p.format.style = "graphpad",
+    label = "p.adj.signif",
+    step.group.by = "V_call_mut",
+    step.increase = 0.04,
+    size = 4,
+    bracket.size = 0.3,
+    tip.length = 0.01,
     hide.ns = TRUE) +
   theme_prism(
-      palette = "black_and_white",
-      base_size = 14, base_family = "arial") +
+    palette = "black_and_white",
+    base_size = 12, base_family = "sans") +
   theme(
-        axis.title.y = element_text(size = 18),
-        plot.title = element_text(
-          size = 24, 
-          face = "bold")
+    text = element_text(face = "bold"),
+    plot.title = element_text(size = 18),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(angle = 0, hjust = 0.5),
+    axis.line.y = element_blank()
         ) +
-  #theme(axis.title.y = element_text(size = 18)) +
+  annotate(
+    "segment",
+      x = 0.5, xend = 0.5, y = 0, yend = 100, linewidth = 1.2
+      ) +
   scale_fill_manual(values = group_colors) +
   scale_shape_manual(values = group_shapes) +
-  scale_y_continuous(expand = c(0,0.2), 
-                    limits = c(0, max_y * 1.1)
-                    ) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20),
+    labels = seq(0, 100, 20),
+    expand = c(0, 0),
+    limits = c(0, 
+               max(VH_max$ymax) * 1.12)
+                  ) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +
   labs(title = "VH4 Genes",
        x = " ", y = "% VH4 Gene Frequency") 
-  ggsave(filename = file.path(plots_output_dir, paste0("HC_VH4_only_bars_dis_4color_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
-       plot = HC_VH4_only_family_distribution_percent_plot, width = 16, height = 8, dpi = 600)
+  ggsave(filename = file.path(plots_output_dir, paste0("HC_VH4_genes_dis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
+       plot = HC_VH4_genes_family_distribution_percent_plot, width = 14, height = 8, dpi = 600)
+  HC_VH4_genes_family_distribution_percent_plot
 
-# V AND J GENE FAMILIES
+
+HC_VH4_J_call_df$group_ID <- factor(HC_VH4_J_call_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
+
+## VH4-04 paired to JH genes 
+## filter data for plotting and analysis
+## need to filter out the multiple gene calls for the analysis because some are non-existent and cannot be compared 
+ VH4_04_JH_bar_df <- HC_VH4_J_call_df %>%
+    group_by(group_ID, VJ_pair_gene) %>%
+    filter(!grepl(",", VJ_pair_gene),
+            V_call_mut == "VH4-04",
+            V_call_mut != "VH4/OR15-8") %>%
+    summarize(
+      avg_percent = mean(percent, na.rm = TRUE),
+      percent_sd = sd(percent, na.rm = TRUE),
+    .groups = "drop")
+  VH4_04_JH_point_df <- HC_VH4_J_call_df %>%
+    group_by(group_ID, VJ_pair_gene) %>%
+    filter(!grepl(",", VJ_pair_gene),
+           V_call_mut == "VH4-04",
+           V_call_mut != "VH4/OR15-8") %>%
+    ungroup()
+
+levene_results_VH4_04_JH_genes <- VH4_04_JH_point_df %>%
+  group_by(VJ_pair_gene) %>%
+  group_modify(~{
+  leveneTest(percent ~ group_ID,
+           data = .x) %>%
+  tidy()
+  })%>%
+  ungroup()
+ 
+welch_anova_VH4_04_JH_genes <- VH4_04_JH_point_df %>%
+  group_by(VJ_pair_gene) %>%
+  group_modify(~{
+  oneway.test(
+    percent ~ group_ID,
+  data = .x,
+  var.equal = FALSE) %>%
+  tidy() 
+  }) %>%
+  ungroup()
+
+pairwise_ttest_VH4_04_JH_genes <- VH4_04_JH_point_df %>%
+  group_by(VJ_pair_gene) %>%
+  group_modify(~{
+    pairwise_t_test(
+      .x,
+      percent ~ group_ID,
+      p.adjust.method = "BH",
+      pool.sd = FALSE) %>%
+    tidy()
+  }) %>%
+  ungroup()
+
+
+## get x and y positions for pvalue bracket positioning
+  VH4_04_JH_gene_bar_positions <- get_dodge_postion(
+    plot_data = VH4_04_JH_bar_df,
+    x_var = "VJ_pair_gene",
+    group_var = "group_ID",
+    y_var = "avg_percent"
+  )
+
+  VH4_04_JH_gene_pairwise_results <- add_bracket_position(
+    pairwise_df = pairwise_ttest_VH4_04_JH_genes,
+    position_lookup = VH4_04_JH_gene_bar_positions,
+    x_group_col = "VJ_pair_gene"
+  )
+
+  VH4_04_JH_gene_max <- VH4_04_JH_point_df %>%
+    group_by(VJ_pair_gene) %>%
+    summarize(
+      ymax = max(percent, na.rm = TRUE),
+      .groups = "drop")
+  
+  VH4_04_JH_gene_pairwise_results <- VH4_04_JH_gene_pairwise_results %>%
+    left_join(
+      VH4_04_JH_gene_max,
+      by = "VJ_pair_gene"
+    ) %>%
+    group_by(VJ_pair_gene) %>%
+    mutate(
+      y.position = ymax * (1.05)
+    ) %>%
+    ungroup() %>%
+    as.data.frame()
+
+HC_VH4_04_JH_genes_family_distribution_percent_plot <- ggplot() +
+  geom_col(
+    data = VH4_04_JH_bar_df,
+    mapping = aes(x = VJ_pair_gene, y = avg_percent, fill = group_ID), 
+    position = position_dodge2(width = 0.9),
+    colour = "black", linewidth = 0.5) +
+  geom_beeswarm(
+                  data = VH4_04_JH_point_df,
+                  mapping = aes(x = VJ_pair_gene, y = percent, shape = group_ID, group = group_ID), 
+                  dodge.width = 0.9, 
+                  method = "center", 
+                  preserve.data.axis = TRUE,
+                  priority = "density", 
+                  corral = "wrap", 
+                  corral.width = 0.05, 
+                  alpha = 0.9
+                  ) +
+  geom_errorbar(
+   data = VH4_04_JH_bar_df,
+   mapping = aes(x = VJ_pair_gene, y= avg_percent, 
+                ymin = pmax(0, avg_percent - percent_sd), 
+                ymax = avg_percent + percent_sd,
+                group = group_ID),
+                position = position_dodge2(width = 0.9, padding = 0.6)
+              ) +
+  stat_pvalue_manual(
+    VH4_04_JH_gene_pairwise_results,
+    xmin = "xmin",
+    xmax = "xmax",
+    y.position = "y.position", 
+    label = "p.adj.signif",
+    step.group.by = "VJ_pair_gene",
+    step.increase = 0.04,
+    size = 4,
+    bracket.size = 0.3,
+    tip.length = 0.01,
+    hide.ns = TRUE) +
+  theme_prism(
+    palette = "black_and_white",
+    base_size = 12, base_family = "sans") +
+  theme(
+    text = element_text(face = "bold"),
+    plot.title = element_text(size = 18),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(angle = 0, hjust = 0.5),
+    axis.line.y = element_blank()
+        ) +
+  annotate(
+    "segment",
+      x = 0.5, xend = 0.5, y = 0, yend = 100, linewidth = 1.2
+      ) +
+  scale_fill_manual(values = group_colors) +
+  scale_shape_manual(values = group_shapes) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20),
+    labels = seq(0, 100, 20),
+    expand = c(0, 0),
+    limits = c(0, 
+               max(VH4_04_JH_gene_max$ymax) * 1.12)
+                  ) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +
+  labs(title = "VH4-04 Gene JH Gene Pairing",
+       x = " ", y = "% VH4-04 JH6 Gene Frequency") 
+  ggsave(filename = file.path(plots_output_dir, paste0("HC_VH4_04_JH_genes_dis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
+       plot = HC_VH4_04_JH_genes_family_distribution_percent_plot, width = 14, height = 8, dpi = 600)
+  HC_VH4_04_JH_genes_family_distribution_percent_plot
+
+
+# V AND J GENE FAMILIES -------
 #%%
 #summary_df is a grouped df so all df made from it need to be grouped 
 #ryan said this could be condensed using case_when, can come back to this
@@ -568,11 +791,6 @@ HC_V_summary_df <- HC_comparison_df %>%
       hit_count = n(),
       HC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>%
     rename(gene = V_gene_mut) %>% 
-    tidyr::complete(gene = expected_genes_VHfam,
-       fill = list(
-       hit_count = NA_integer_, 
-       HC_cdr3_aa_charge = NA_real_
-       )) %>%  
     mutate(type = "V_gene") %>%
     ungroup() %>%
     group_by(group_ID, BR_code) %>%
@@ -603,13 +821,6 @@ HC_J_summary_df <- HC_comparison_df %>%
       hit_count = n(),
       HC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE))%>% 
     rename(gene = J_gene_mut) %>%
-    tidyr::complete(gene = expected_genes_JHfam,
-     fill = list(
-     hit_count = NA_integer_, 
-     HC_cdr3_aa_charge = NA_real_
-     #percent_value = 0, percent = 0), 
-     # explicit = FALSE
-    )) %>% 
     mutate(type = "J_gene") %>%
     ungroup() %>%
     group_by(group_ID, BR_code) %>%
@@ -637,13 +848,6 @@ HC_VJ_summary_df <- HC_comparison_df %>%
         hit_count = n(),
         HC_cdr3_aa_charge = mean(cdr3_aa_charge, na.rm = TRUE)) %>%
     rename(gene = VJ_only_gene) %>%
-     tidyr::complete(gene = expected_genes_VJHpairs,
-      fill = list(
-       hit_count = NA_integer_, 
-       HC_cdr3_aa_charge = NA_real_ 
-        #percent_value = 0, percent = 0), 
-        #explicit = FALSE)
-        ))%>%  
     mutate(type = "VJ_pair") %>%
     ungroup() %>%
     group_by(group_ID, BR_code) %>%
@@ -677,12 +881,14 @@ HC_gene_means_df <- HC_summary_df %>%
       hit_count_gene = sum(hit_count, na.rm = TRUE),
       HC_cdr3_aa_charge_gene = mean(HC_cdr3_aa_charge, na.rm = TRUE),
       percent_gene = mean(percent, na.rm = TRUE),
-      percent_stdev = unique(percent_stdev),
+      percent_stdev = sd(percent),
       #percent_p_value = unique(percent_p_value),
-      cdr3_stdev = unique(cdr3_stdev)) %>%
+      cdr3_stdev = sd(HC_cdr3_aa_charge),
+      n_group = n()) %>%
       #cdr3_p_value = unique(cdr3_p_value)) %>%
     ungroup() %>%
     group_by(group_ID, type) %>%
+    # this mutate includes the whole V or J gene (not by family)
     mutate(
       total_hits_family = sum(hit_count_gene, na.rm = TRUE),
       #percent_gene = if_else(total_hits_family == 0, 0, ((hit_count_gene / total_hits_family) * 100)),
@@ -705,74 +911,146 @@ HC_cdr3_avgBR_charge <- HC_comparison_df %>%
       t.test(mean_br_cdr3charge ~ group_ID)$p.value,
       error = function(e)NA_real_))
 
-#make wide df for presentations
-  HC_summary_wide_df <- HC_summary_df %>%
-      filter(type != "VJ_pair") %>%
-      select(-hit_count, -type, -HC_cdr3_aa_charge) %>%
-              #-percent_p_value, -cdr3_stdev,
-            #-cdr3_p_value, -percent_stdev) %>%
-        pivot_wider(names_from = "gene", values_from = "percent")
-
-  HC_means_wide_df <- HC_gene_means_df %>%
-      ungroup() %>%
-      filter(type != "VJ_pair") %>%
-      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family, -HC_cdr3_aa_charge_family) %>%
-              #-percent_p_value, -cdr3_stdev, -cdr3_p_value, -percent_stdev) %>%
-      pivot_wider(names_from = "gene", values_from = "percent_gene")
-
-  HC_percent_stdev_wide_df <- HC_gene_means_df %>%
-      group_by(group_ID) %>%
-      filter(type != "VJ_pair") %>%
-      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family, -HC_cdr3_aa_charge_family, -percent_gene) %>% 
-              #-percent_p_value, -cdr3_stdev, -cdr3_p_value) %>%
-      pivot_wider(names_from = "gene", values_from = "percent_stdev")
-
-  HC_percent_pvalue_wide_df <- HC_gene_means_df %>%
-      group_by(group_ID) %>%
-      filter(type != "VJ_pair") %>%
-      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
-            -HC_cdr3_aa_charge_family, -percent_gene, -percent_stdev, -cdr3_p_value, -cdr3_stdev) %>%
-      pivot_wider(names_from = "gene", values_from = "percent_p_value")
-
-  HC_cdr3gene_stdev_wide_df <- HC_gene_means_df %>%
-      group_by(group_ID) %>%
-      filter(type != "VJ_pair") %>%
-      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
-            -HC_cdr3_aa_charge_family, -percent_gene, -percent_p_value, -percent_stdev, -cdr3_p_value) %>%
-      pivot_wider(names_from = "gene", values_from = "cdr3_stdev")
-
-  HC_cdr3gene_pvalue_wide_df <- HC_gene_means_df %>%
-      group_by(group_ID) %>%
-      filter(type != "VJ_pair") %>%
-      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
-            -HC_cdr3_aa_charge_family, -percent_gene, -percent_stdev, -percent_p_value, -cdr3_stdev) %>%
-      pivot_wider(names_from = "gene", values_from = "cdr3_p_value")
-
-  HC_cell_counts_df <- HC_summary_df %>%
-      group_by(group_ID, BR_code) %>%
-      filter(type == "V_gene") %>%
-      summarize(cells = sum(hit_count))
 
 
-###HEAVY CHAIN PLOTS
-# Variable Family Distribution Plots 
+# STATISTICAL ANALYSIS V FAMILY J GENE -------
 #%%
-#make factor for correct order on graph 
+#make factor for correct order on graph and for statistics
+HC_V_summary_df$group_ID <- factor(HC_V_summary_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
+HC_J_summary_df$group_ID <- factor(HC_J_summary_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
 HC_summary_df$group_ID <- factor(HC_summary_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
 HC_gene_means_df$group_ID <- factor(HC_gene_means_df$group_ID, levels=c('BAHC','BAMS_nonNAT','BAMS_NAT')) 
 
+
+levene_results_HC_summary <- HC_summary_df %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+  leveneTest(percent ~ group_ID,
+           data = .x) %>%
+  tidy() 
+  })%>%
+  ungroup()
+
+# not including VJ pair here because there are not enough of some of the pairs to run analysis 
+welch_anova_HC_V_summary <- HC_V_summary_df %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+  oneway.test(
+    percent ~ group_ID,
+  data = .x,
+  var.equal = FALSE) %>%
+  tidy() 
+  }) %>%
+  ungroup()
+
+welch_anova_HC_J_summary <- HC_J_summary_df %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+  oneway.test(
+    percent ~ group_ID,
+  data = .x,
+  var.equal = FALSE) %>%
+  tidy() 
+  }) %>%
+  ungroup()
+
+welch_anova_HC_VH4JH6 <- HC_summary_df %>%
+  filter(gene == "VH4:JH6") %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+  oneway.test(
+    percent ~ group_ID,
+  data = .x,
+  var.equal = FALSE) %>%
+  tidy() 
+  }) %>%
+  ungroup()
+
+pairwise_ttest_HC_V_summary <- HC_V_summary_df %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+    pairwise_t_test(
+      .x,
+      percent ~ group_ID,
+      p.adjust.method = "BH",
+      pool.sd = FALSE) %>%
+    tidy()
+  }) %>%
+  ungroup()
+
+pairwise_ttest_HC_J_summary <- HC_J_summary_df %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+    pairwise_t_test(
+      .x,
+      percent ~ group_ID,
+      p.adjust.method = "BH",
+      pool.sd = FALSE) %>%
+    tidy()
+  }) %>%
+  ungroup()
+
+pairwise_ttest_HC_VH4JH6 <- HC_summary_df %>%
+  filter(gene == "VH4:JH6") %>%
+  group_by(gene, type) %>%
+  group_modify(~{
+    pairwise_t_test(
+      .x,
+      percent ~ group_ID,
+      p.adjust.method = "BH",
+      pool.sd = FALSE) %>%
+    add_xy_position(x = "group_ID") %>%
+    mutate(y.position = y.position * 0.89) %>%
+    tidy()
+  }) %>%
+  ungroup()
+
+
+###HEAVY CHAIN PLOTS -------
+#%%
+# Variable Family Distribution Plots 
 #filter data for plot
  VH_bar_df <- HC_gene_means_df %>%
     filter(type == "V_gene") %>%
-    group_by(group_ID) %>%
-    dplyr::distinct(gene, .keep_all = TRUE) 
+    group_by(group_ID) 
   VH_point_df <- HC_summary_df %>%
     filter(type == "V_gene") %>%
     group_by(group_ID) 
 
+## get x and y positions for pvalue bracket positioning
+  VH_bar_positions <- get_dodge_postion(
+    plot_data = VH_bar_df,
+    x_var = "gene",
+    group_var = "group_ID",
+    y_var = "percent_gene"
+  )
+
+  VH_pairwise_results <- add_bracket_position(
+    pairwise_df = pairwise_ttest_HC_V_summary,
+    position_lookup = VH_bar_positions,
+    x_group_col = "gene"
+  )
+
+  VH_max <- VH_point_df %>%
+    group_by(gene) %>%
+    summarize(
+      ymax = max(percent, na.rm = TRUE),
+      .groups = "drop")
+  
+  VH_pairwise_results <- VH_pairwise_results %>%
+    left_join(
+      VH_max,
+      by = "gene"
+    ) %>%
+    group_by(gene) %>%
+    mutate(
+      y.position = ymax * (1.05)
+    ) %>%
+    ungroup() %>%
+    as.data.frame()
+
 #plot data 
-HC_V_family_distribution_percent_plot <- HC_summary_df %>%
-  ggplot() +
+HC_V_family_distribution_percent_plot <- ggplot() +
   geom_col(
     data = VH_bar_df,
     mapping = aes(x = gene, y = percent_gene, fill = group_ID), 
@@ -794,35 +1072,52 @@ HC_V_family_distribution_percent_plot <- HC_summary_df %>%
                 ymin = pmax(0, percent_gene - percent_stdev), 
                 ymax = percent_gene + percent_stdev,
                 group = group_ID),
-                #width = 0.1, 
                 position = position_dodge2(width = 0.9, padding = 0.6)
               ) +
-  #geom_text(
-    #mapping = aes(x = gene, y = - 1, label = round(percent_gene, 2)),
-    #vjust = 4, size = 1.8, colour = "black", 
-    #position = position_dodge2(width = 1, preserve = "total")) +
-  #coord_cartesian(ylim = c(-5, max(HC_gene_means_df$percent_gene))) +
+   stat_pvalue_manual(
+    VH_pairwise_results,
+    xmin = "xmin",
+    xmax = "xmax",
+    y.position = "y.position",
+    label = "p.adj.signif",
+    p.format.style = "graphpad",
+    step.group.by = "gene",
+    step.increase = 0.04,
+    bracket.size = 0.3,
+    tip.length = 0.01,
+    hide.ns = TRUE
+  ) + 
   theme_prism(
-    palette = "black_and_white",
     base_size = 12,
-    base_family = "arial") +
-  #theme(
-  # plot.title = element_text(size = 18),
-   # axis.title.y = element_text(size = 14),
-   # axis.text.x = element_text(angle = 0, hjust = 0.5),
-   # size = 24,
-   # face = "bold") +
+    base_family = "sans") +
+  theme(
+   text = element_text(face = "bold"),
+   plot.title = element_text(size = 18),
+   axis.title.y = element_text(size = 14),
+   axis.text.x = element_text(angle = 0, hjust = 0.5),
+   axis.line.y = element_blank()) +
+  annotate(
+    "segment",
+      x = 0.5, xend = 0.5, y = 0, yend = 100, linewidth = 1.2
+  ) +
   scale_fill_manual(values = group_colors) +
   scale_shape_manual(values = group_shapes) +
- # scale_y_continuous(expand = mult(c(0, 0.02))) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20),
+    labels = seq(0, 100, 20),
+    expand = c(0, 0),
+    limits = c(0, 
+               max(VH_max$ymax) * 1.12)
+                  ) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +
   labs(title = "VH Families",
        x = "Heavy Chain Gene Family", y = "% VH Family Usage")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_V_famdis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
        plot = HC_V_family_distribution_percent_plot, width = 14, height = 8)
-plot(HC_V_family_distribution_percent_plot)
-### does plot() work here?? 
+HC_V_family_distribution_percent_plot
 
-# Joint Family Distribution Plots.
+
+# Joint Family Distribution Plots
 #filter data for plot
  JH_bar_df <- HC_gene_means_df %>%
     filter(type == "J_gene") %>%
@@ -831,6 +1126,37 @@ plot(HC_V_family_distribution_percent_plot)
   JH_point_df <- HC_summary_df %>%
     filter(type == "J_gene") %>%
     group_by(group_ID) 
+
+  JH_bar_positions <- get_dodge_postion(
+    plot_data = JH_bar_df,
+    x_var = "gene",
+    group_var = "group_ID",
+    y_var = "percent_gene"
+  )
+
+  JH_pairwise_results <- add_bracket_position(
+    pairwise_df = pairwise_ttest_HC_J_summary,
+    position_lookup = JH_bar_positions,
+    x_group_col = "gene"
+  )
+## get x and y positions for pvalue bracket positioning
+  JH_max <- JH_point_df %>%
+    group_by(gene) %>%
+    summarize(
+      ymax = max(percent, na.rm = TRUE),
+      .groups = "drop")
+  
+  JH_pairwise_results <- JH_pairwise_results %>%
+    left_join(
+      JH_max,
+      by = "gene"
+    ) %>%
+    group_by(gene) %>%
+    mutate(
+      y.position = ymax * (1.05)
+    ) %>%
+    ungroup() %>%
+    as.data.frame()
 
 #plot data 
 HC_J_family_distribution_percent_plot <- HC_summary_df %>%
@@ -850,7 +1176,6 @@ HC_J_family_distribution_percent_plot <- HC_summary_df %>%
                   corral = "wrap", 
                   corral.width = 0.05, 
                   alpha = 0.9
-                  #size = 1.3, position = position_jitterdodge(jitter.width = 0.2)
                   ) +
   geom_errorbar(
    data = JH_bar_df,
@@ -858,27 +1183,155 @@ HC_J_family_distribution_percent_plot <- HC_summary_df %>%
                 ymin = pmax(0, percent_gene - percent_stdev), 
                 ymax = percent_gene + percent_stdev,
                 group = group_ID),
-                #width = 0.1, 
                 position = position_dodge2(width = 0.9, padding = 0.6)
               ) +
+   stat_pvalue_manual(
+    JH_pairwise_results,
+    xmin = "xmin",
+    xmax = "xmax",
+    y.position = "y.position",
+    label = "p.adj.signif",
+    p.format.style = "graphpad",
+    step.group.by = "gene",
+    step.increase = 0.04,
+    bracket.size = 0.3,
+    tip.length = 0.01,
+    hide.ns = TRUE
+  ) + 
   theme_prism(
-    palette = "black_and_white",
     base_size = 12,
-    base_family = "arial") +
+    base_family = "sans") +
   theme(
+    text = element_text(face = "bold"),
     plot.title = element_text(size = 18),
     axis.title.y = element_text(size = 14),
     axis.text.x = element_text(angle = 0, hjust = 0.5),
-    size = 24,
-    face = "bold") +
+    axis.line.y = element_blank()
+    ) +
+  annotate(
+    "segment",
+      x = 0.5, xend = 0.5, y = 0, yend = 100, linewidth = 1.2
+     ) +
   scale_fill_manual(values = group_colors) +
   scale_shape_manual(values = group_shapes) +
-  scale_y_continuous(expand = c(0, 0.25)) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20),
+    labels = seq(0, 100, 20),
+    expand = c(0, 0),
+    limits = c(0, 
+               max(VH_max$ymax) * 1.12)
+                  ) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +
   labs(title = "JH Families",
        x = "Heavy Chain Gene Family", y = "% JH Family Usage")
     ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_percent_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
        plot = HC_J_family_distribution_percent_plot, width = 14, height = 8)
+    HC_J_family_distribution_percent_plot
 
+# VH4JH6 distribution percent plot 
+ VH4JH6_bar_df <- HC_gene_means_df %>%
+    filter(gene == "VH4:JH6") %>%
+    group_by(group_ID) %>%
+    dplyr::distinct(gene, .keep_all = TRUE)
+  VH4JH6_point_df <- HC_summary_df %>%
+    filter(gene == "VH4:JH6") %>%
+    group_by(group_ID) 
+
+    VH4_JH6_plot_labels <- set_names(
+      paste0(
+        VH4JH6_bar_df$group_ID,
+        "\nMean = ", round(VH4JH6_bar_df$percent_gene, 2),
+        "\nSD = ", round(VH4JH6_bar_df$percent_stdev, 2),
+        "\nN = ", VH4JH6_bar_df$n_group
+      ),
+      VH4JH6_bar_df$group_ID
+    )
+
+    VH4JH6_max_y <- max(
+      c(
+        VH4JH6_point_df$percent,
+        pairwise_ttest_HC_VH4JH6$y.position
+      ),
+      na.rm = TRUE
+    )
+
+HC_VH4JH6_distribution_percent_plot <- ggplot() +
+      geom_col(
+               data = VH4JH6_bar_df,
+               mapping = aes(
+                x = group_ID,
+                y = percent_gene,
+                fill = group_ID),
+               width = 0.8,
+               colour = "black", linewidth = 0.5) +
+      geom_beeswarm(
+        data = VH4JH6_point_df,
+        mapping = aes(
+          x = group_ID,
+          y = percent,
+          shape = group_ID,
+          group = group_ID),
+        dodge.width = 0.05,
+        method = "center",
+        preserve.data.axis = TRUE,
+        priority = "density", 
+        corral = "wrap", 
+        corral.width = 0.05, 
+        alpha = 0.9
+        #size = 1.3, position = position_jitterdodge(jitter.width = 0.2)
+      ) +
+      geom_errorbar(
+        data = VH4JH6_bar_df,
+        mapping = aes(x = group_ID, y= percent_gene,
+        ymin = pmax(0, percent_gene - percent_stdev), 
+        ymax = percent_gene + percent_stdev,
+        group = group_ID),
+        width = 0.3,
+      ) +
+      stat_pvalue_manual(
+        pairwise_ttest_HC_VH4JH6,
+        size = 4, 
+        p.format.style = "graphpad",
+        bracket.size = 0.3,
+        tip.length = 0.02,
+        #step.increase = 0.02,
+        hide.ns = TRUE) +
+      theme_prism(
+        base_size = 10,
+        base_family = "sans") +
+      theme(
+        #plot.title = element_text(size = 14, face = "bold"),
+        axis.title.y = element_text(size = 12, face = "bold", hjust = 0.35),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 8, hjust = 0.5),
+        axis.line.y = element_blank()
+      ) +
+      geom_segment(
+        aes(
+          x = 0.5,
+          xend = 0.5, 
+          y = 0, 
+          yend = 100
+        ),
+        inherit.aes = FALSE
+      ) +
+      scale_fill_manual(values = group_colors) +
+      scale_shape_manual(values = group_shapes) +
+      scale_y_continuous(
+        breaks = seq(0, 100, 20),
+        labels = seq(0, 100, 20),
+        expand = c(0, 0),
+        limits = c(0, VH4JH6_max_y * 1.1)
+      ) +
+      scale_x_discrete(labels = VH4_JH6_plot_labels,
+                        expand = expansion(mult = c(0, 0))) +
+      labs(y = "% VH4+JH6+",
+            x = " ")
+    ggsave(filename = file.path(plots_output_dir, paste0(
+                    "HC_VH4JH6_distribution_percent_",
+                    exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".png")),
+    plot = HC_VH4JH6_distribution_percent_plot, width = 6, height = 6)
+  plot(HC_VH4JH6_distribution_percent_plot)
 
 
 #V:J PAIRINGS counts and percentage plots
@@ -922,7 +1375,7 @@ ggplot(aes(x = gene, y = percent_gene, fill = group_ID)) +
 
 
 
-#CDR3 CHARGES
+### CDR3 CHARGES
 HC_charge_plot <- HC_gene_means_df %>%
   dplyr::filter(type == "V_gene" | type == "J_gene") %>%
   ggplot() +
@@ -978,13 +1431,13 @@ HC_charge_plot_perBR <- HC_cdr3_avgBR_charge %>%
               #summarize(hit_count = sum(hit_count), .groups = "drop") %>%
               #mutate(measure = "HC_cdr3_aa_charge"),
             #aes(x = ID, y = 0, label = hit_count, fill = group_ID)) +
-  ylim(-3.0, 0.6) +
-  theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  labs(title = "Heavy Chain CDR3 Charges",
-       x = "Group", y = "Avg CDR3 charge")
-    ggsave(filename = file.path(plots_output_dir, paste0("HC_CDR3_charge_perBR_", exp_group, "_vs_", ctrl_group, ".png")),
-       plot = HC_charge_plot_perBR, width = 6, height = 4)
+    ylim(-3.0, 0.6) +
+    theme_classic(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+    labs(title = "Heavy Chain CDR3 Charges",
+        x = "Group", y = "Avg CDR3 charge")
+      ggsave(filename = file.path(plots_output_dir, paste0("HC_CDR3_charge_perBR_", exp_group, "_vs_", ctrl_group, ".png")),
+        plot = HC_charge_plot_perBR, width = 6, height = 4)
 
 #CDR3 charge distribution plot for V gene families 
 HC_V_family_distribution_charge_plot <- HC_summary_df %>%
@@ -1054,7 +1507,8 @@ HC_J_family_distribution_charge_plot <- HC_summary_df %>%
     ggsave(filename = file.path(plots_output_dir, paste0("HC_J_famdis_CDR3_charge_", exp_group, "_vs_", ctrl_group, ".png")),
        plot = HC_J_family_distribution_charge_plot, width = 6, height = 4)
 
-
+#### CHORD DIAGRAMS
+#%%
 #V:J pairs set chord colors
 row.col = adjustcolor(c(
   VH1 = "#0356BA", VH2 = "#008B90", VH3 = "#16B900", VH4 = "#905100", VH5 = "#b6033cff", VH6 = "#6f02b3ff",
@@ -1208,6 +1662,54 @@ VJ_pairs_HC_chord_diagram_control <- HC_gene_means_df %>%
   title(paste0("Heavy Chain V:J Gene Pairings in ", ctrl_group), cex.main = 2)
   dev.off()
 
+## make wide df for presentations
+  HC_summary_wide_df <- HC_summary_df %>%
+      filter(type != "VJ_pair") %>%
+      select(-hit_count, -type, -HC_cdr3_aa_charge) %>%
+              #-percent_p_value, -cdr3_stdev,
+            #-cdr3_p_value, -percent_stdev) %>%
+        pivot_wider(names_from = "gene", values_from = "percent")
+
+  HC_means_wide_df <- HC_gene_means_df %>%
+      ungroup() %>%
+      filter(type != "VJ_pair") %>%
+      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family, -HC_cdr3_aa_charge_family) %>%
+              #-percent_p_value, -cdr3_stdev, -cdr3_p_value, -percent_stdev) %>%
+      pivot_wider(names_from = "gene", values_from = "percent_gene")
+
+  HC_percent_stdev_wide_df <- HC_gene_means_df %>%
+      group_by(group_ID) %>%
+      filter(type != "VJ_pair") %>%
+      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family, -HC_cdr3_aa_charge_family, -percent_gene) %>% 
+              #-percent_p_value, -cdr3_stdev, -cdr3_p_value) %>%
+      pivot_wider(names_from = "gene", values_from = "percent_stdev")
+
+  HC_percent_pvalue_wide_df <- HC_gene_means_df %>%
+      group_by(group_ID) %>%
+      filter(type != "VJ_pair") %>%
+      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
+            -HC_cdr3_aa_charge_family, -percent_gene, -percent_stdev, -cdr3_p_value, -cdr3_stdev) %>%
+      pivot_wider(names_from = "gene", values_from = "percent_p_value")
+
+  HC_cdr3gene_stdev_wide_df <- HC_gene_means_df %>%
+      group_by(group_ID) %>%
+      filter(type != "VJ_pair") %>%
+      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
+            -HC_cdr3_aa_charge_family, -percent_gene, -percent_p_value, -percent_stdev, -cdr3_p_value) %>%
+      pivot_wider(names_from = "gene", values_from = "cdr3_stdev")
+
+  HC_cdr3gene_pvalue_wide_df <- HC_gene_means_df %>%
+      group_by(group_ID) %>%
+      filter(type != "VJ_pair") %>%
+      select(-type, -hit_count_gene, -HC_cdr3_aa_charge_gene, -total_hits_family,
+            -HC_cdr3_aa_charge_family, -percent_gene, -percent_stdev, -percent_p_value, -cdr3_stdev) %>%
+      pivot_wider(names_from = "gene", values_from = "cdr3_p_value")
+
+  HC_cell_counts_df <- HC_summary_df %>%
+      group_by(group_ID, BR_code) %>%
+      filter(type == "V_gene") %>%
+      summarize(cells = sum(hit_count))
+
 
 ##CSV output
 write_csv(summary_tsv_NGS, file.path(csv_output_dir, paste0(project, "summary_tsv.csv")))
@@ -1228,6 +1730,8 @@ write_csv(HC_cdr3_avgBR_charge, file.path(csv_output_dir, paste0(project, "_Heav
 
 write_csv(HC_summary_wide_df, file.path(csv_output_dir, 
           paste0(project, "_HeavyChain_summary_widedata_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".csv")))
+write_csv(VH_point_df, file.path(csv_output_dir, 
+          paste0(project, "_VH4_percentages_", exp_group_A, "_vs_", ctrl_group, ".csv")))
 write_csv(HC_means_wide_df, file.path(csv_output_dir, 
           paste0(project, "_HeavyChain_means_widedata_", exp_group_A, "_vs_", exp_group_B, "_vs_", ctrl_group, ".csv")))
 write_csv(HC_percent_stdev_wide_df, file.path(csv_output_dir, paste0(project, "_HeavyChain_percent_stdev_widedata_", exp_group, "_vs_", ctrl_group, ".csv")))
